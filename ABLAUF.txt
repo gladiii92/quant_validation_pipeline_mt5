@@ -11,3 +11,12 @@ git commit -m "XXX"
 
 4. 
 git push origin main
+
+
+
+______________________________________________________
+
+1. Backtest als XLSX speichern.
+2. .xlsx in data/raw abspeichern mit Strategienamen (z.B. RangebreakoutUSDJPY.xlsx)
+3. cmd ausführen mit mt5_xml_to_csv_converter.py - wandelt den Backtest von MT5 in eine csv nur mit den Trades um
+	Name vom converter anpassen für die Strategie - sonst immer gleicher Name!
