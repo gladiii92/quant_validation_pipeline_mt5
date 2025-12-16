@@ -1,0 +1,99 @@
+# ============================================================
+# QUANT VALIDATION PIPELINE - Konfigurationsdatei
+# ============================================================
+
+project:
+name: "quant_validation_pipeline"
+version: "1.0.0"
+broker: "IC Markets"
+base_currency: "USD"
+description: "Validation pipeline für Forex/Crypto/Equities Trading Strategien"
+
+# ============================================================
+# DATEN-QUELLEN
+# ============================================================
+
+data:
+# Welche Symbole willst du tracken?
+symbols:
+- "EURUSD"
+- "XAUUSD"
+- "BTCUSD"
+- "GBPUSD"
+- "USDJPY"
+
+# Timeframes (M1=1min, M5=5min, H1=1hour, D1=daily, etc.)
+timeframes: ["M5", "M15", "H1", "D1"]
+
+# Datenquelle: "mt5" oder "yfinance"
+source: "mt5"
+
+# MT5 Konfiguration
+mt5:
+server: "ICMarkets-Live" # oder dein IC-Markets Server
+timezone: "UTC"
+history_folder: "data/raw"
+
+# Speicher-Konfiguration (DuckDB + Parquet)
+storage:
+type: "duckdb"
+duckdb_path: "storage/market_data.duckdb"
+parquet_path: "storage/parquet/"
+
+# ============================================================
+# BACKTEST PARAMETER
+# ============================================================
+
+backtest:
+initial_capital: 10000 # USD
+max_position_size: 0.02 # 2% pro Trade
+# Gebühren & Slippage (realistisch!)
+costs:
+spread_pips: 1.5 # IC Markets typisch
+commission: 0.0001 # 0.01% pro Seite
+slippage_percent: 0.0003 # 0.03%
+
+# ============================================================
+# VALIDIERUNGS-SCHWELLEN (Decision Gates)
+# ============================================================
+
+validation:
+# Minimale Sharpe-Ratio (Out-of-Sample)
+
+min_oos_sharpe: 0.8
+# Minimale Monte-Carlo Erfolgswahrscheinlichkeit
+
+min_mc_positive_prob: 0.75
+# Maximaler Drawdown
+
+max_drawdown: 0.25 # 25%
+# Minimum Korrelation MT5 vs. Python Backtest
+
+min_mt5_correlation: 0.80
+# Walk-Forward Test Parameter
+
+walk_forward:
+train_window: 252 # ~1 Jahr tägliche Daten
+test_window: 63 # ~3 Monate
+step_size: 21 # ~1 Monat Schritt
+
+# ============================================================
+# LOGGING
+# ============================================================
+
+logging:
+level: "INFO" # DEBUG, INFO, WARNING, ERROR, CRITICAL
+console: true
+file:
+enabled: true
+path: "logs/pipeline.log"
+max_size_mb: 100
+
+# ============================================================
+# MODELL-ANNAHMEN (laden von YAML-Dateien)
+# ============================================================
+
+models:
+assumptions_folder: "models/assumptions/"
+regime_policy_file: "validation/regime_policy.yaml"
+

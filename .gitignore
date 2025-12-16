@@ -1,0 +1,77 @@
+# Virtual Environment
+venv/
+env/
+ENV/
+.venv
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# Data & Storage
+data/raw/
+data/processed/
+*.parquet
+*.duckdb
+*.duckdb-shm
+*.duckdb-wal
+storage/
+strategies/
+
+# ML & Training
+mlruns/
+*.pkl
+*.joblib
+models/trained/
+
+# Logs
+logs/
+*.log
+
+# .env
+.env
+.env.local
+.env.*.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Reports
+reports/output/
+
+# Test Coverage
+htmlcov/
+.coverage
+.pytest_cache/
