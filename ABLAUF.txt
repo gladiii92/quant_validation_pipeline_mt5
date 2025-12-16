@@ -1,5 +1,6 @@
 1.
 cd G:\DAVID\Desktop\GitHub\quant_validation_pipeline
+
 venv\Scripts\activate
 
 2.
