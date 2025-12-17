@@ -20,6 +20,7 @@ import numpy as np
 
 from mt5_integration.trades_loader import MT5TradesLoader
 from backtest.metrics import calculate_metrics
+from validation.cost_scenarios import run_cost_scenarios
 from validation.gates import DecisionGate
 from validation.monte_carlo import run_monte_carlo_on_trades
 from utils.logger import get_logger
@@ -80,7 +81,25 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml") -> None
     logger.info(" Max Drawdown: %.2f%%", metrics["max_drawdown"] * 100)
     logger.info(" Win Rate: %.2f%%", metrics["win_rate"] * 100)
 
-    # === SCHRITT 5: Monte-Carlo auf Trades ===
+
+    # === SCHRITT 5: Kosten-/Slippage-Szenarien ===
+    logger.info("\n[STEP 5] Running cost/slippage scenarios...")
+
+    cost_scenarios = {
+        "base": 1.0,
+        "cost_plus_25": 0.75,
+        "cost_plus_50": 0.5,
+    }
+
+    cost_results = run_cost_scenarios(
+        trades_df,
+        initial_capital=initial_capital,
+        scenarios=cost_scenarios,
+    )
+
+    logger.info("✅ Cost scenarios finished")
+
+    # === SCHRITT 6: Monte-Carlo auf Trades ===
     logger.info("\n[STEP 5] Running Monte Carlo on trade sequence...")
 
     mc_results = run_monte_carlo_on_trades(
@@ -155,7 +174,7 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml") -> None
 
     logger.info("✅ Monte Carlo return plot saved to %s", mc_plot_path)
 
-    # === SCHRITT 6: Decision Gate ===
+    # === SCHRITT 7: Decision Gate ===
     logger.info("\n[STEP 6] Running Decision Gate...")
     gate = DecisionGate(config_path)
 
@@ -180,7 +199,7 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml") -> None
 
     logger.info("%s\n", "=" * 60)
 
-    # === SCHRITT 7: Report speichern ===
+    # === SCHRITT 8: Report speichern ===
     logger.info("[STEP 7] Saving report...")
     reports_dir.mkdir(exist_ok=True)
     report_path = reports_dir / f"{Path(trades_csv_path).stem}_report.txt"
@@ -207,6 +226,15 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml") -> None
         f.write(f" mc_p95_return: {mc_results['mc_p95_return']:.2%}\n")
         f.write(f" mc_median_max_dd: {mc_results['mc_median_max_dd']:.2%}\n")
         f.write(f" mc_p95_max_dd: {mc_results['mc_p95_max_dd']:.2%}\n\n")
+
+        f.write("COST SCENARIOS:\n")
+        for name, m in cost_results.items():
+            f.write(f" {name}:\n")
+            f.write(f"   Total Return: {m['total_return']:.2%}\n")
+            f.write(f"   Sharpe Ratio: {m['sharpe_ratio']:.2f}\n")
+            f.write(f"   Max Drawdown: {m['max_drawdown']:.2%}\n")
+            f.write(f"   Profit Factor: {m['profit_factor']:.2f}\n")
+        f.write("\n")
 
         f.write(f"DECISION: {result.status.value}\n")
         f.write(f"Reason: {result.reason}\n")

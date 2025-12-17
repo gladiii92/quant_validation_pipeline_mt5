@@ -19,5 +19,22 @@ MONTE CARLO:
  mc_median_max_dd: 3.86%
  mc_p95_max_dd: 6.65%
 
+COST SCENARIOS:
+ base:
+   Total Return: 35.36%
+   Sharpe Ratio: 2.79
+   Max Drawdown: 3.86%
+   Profit Factor: 1.72
+ cost_plus_25:
+   Total Return: 26.52%
+   Sharpe Ratio: 2.79
+   Max Drawdown: 2.89%
+   Profit Factor: 1.72
+ cost_plus_50:
+   Total Return: 17.68%
+   Sharpe Ratio: 2.79
+   Max Drawdown: 1.93%
+   Profit Factor: 1.72
+
 DECISION: LIVE_ELIGIBLE
 Reason: All validation criteria passed ✅
