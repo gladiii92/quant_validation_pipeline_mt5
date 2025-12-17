@@ -2,12 +2,13 @@
 MT5 Trades Loader für die aus RangeBreakOut_USDJPY.xlsx erzeugte merged-CSV.
 
 - Liest die merged CSV (Orders + Trades)
-- Bildet aus in/out-Zeilen pro Trade ein standardisiertes, positionsbasiertes DataFrame
+- Bildet aus in/out-Zeilen pro Symbol & Richtung eine Positionsliste
+- Gibt ein standardisiertes DataFrame zurück
 """
 
 import sys
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, List
 
 import pandas as pd
 
@@ -28,19 +29,19 @@ class MT5TradesLoader:
 
     def load_trades(self, csv_path: str) -> pd.DataFrame:
         """
-        Lädt Trades aus der merged MT5 CSV.
+        Lädt Trades aus der merged MT5 CSV und baut abgeschlossene Positionen.
 
-        Erwartete Spalten in der CSV (aus deinem Converter):
+        Erwartete Spalten in der CSV:
 
         - Trade
         - Symbol_trade
-        - Typ_trade
-        - Richtung  (in / out)
+        - Typ_trade       (buy/sell)
+        - Richtung        (in/out)
         - Volumen_trade
         - Preis_trade
         - Gewinn
         - Kontostand
-        - Eröffnungszeit
+        - Eröffnungszeit  (Zeit aus Orders/Trades-Block)
         - Typ_order
         - Preis_order
         - S/L
@@ -51,7 +52,7 @@ class MT5TradesLoader:
         Returns:
             DataFrame mit Spalten (positionsbasiert):
 
-            - ticket (int): Trade ID (dein "Trade")
+            - ticket (int): Laufende Positions-ID (nicht MT5-Trade-ID)
             - entry_time (datetime): Einstiegszeit
             - exit_time (datetime): Ausstiegszeit
             - symbol (str)
@@ -68,14 +69,14 @@ class MT5TradesLoader:
 
         logger.info(f"Loading merged MT5 trades from {csv_path}...")
 
-        # CSV laden (Separator anpassen, wenn du ; verwendest)
+        # Deine CSV ist mit ; getrennt
         df = pd.read_csv(path, sep=";")
 
-        # Balance-Zeile(n) entfernen (Trade == 1 mit Symbol NaN etc.)
+        # Balance-Zeilen entfernen (Trade=1, Symbol leer/balance)
         if "Symbol_trade" in df.columns:
             df = df[~((df["Trade"] == 1) & df["Symbol_trade"].isna())]
 
-        # Sicherstellen, dass die nötigen Spalten existieren
+        # Pflichtspalten prüfen – ohne 'Zeit'
         required_cols = [
             "Trade",
             "Symbol_trade",
@@ -84,90 +85,123 @@ class MT5TradesLoader:
             "Volumen_trade",
             "Preis_trade",
             "Gewinn",
-            "Zeit",
+            "Eröffnungszeit",
         ]
         missing = [c for c in required_cols if c not in df.columns]
         if missing:
             raise ValueError(f"Missing required columns in CSV: {missing}")
 
-        # Zeit-Spalte in datetime konvertieren
-        df["Zeit"] = pd.to_datetime(df["Zeit"])
+        # Zeitspalte: Eröffnungszeit in datetime
+        df["Eröffnungszeit"] = pd.to_datetime(df["Eröffnungszeit"])
 
-        # Entry-/Exit-Zeilen markieren
-        # Annahme: Richtung == 'in' ist Entry, 'out' ist Exit
-        df_entry = df[df["Richtung"] == "in"].copy()
-        df_exit = df[df["Richtung"] == "out"].copy()
+        # Nach Eröffnungszeit sortieren, damit wir Entries/Exits in chronologischer Reihenfolge sehen
+        df = df.sort_values("Eröffnungszeit").reset_index(drop=True)
 
-        # Umbenennen für klarere Merge-Keys
-        df_entry = df_entry.rename(
-            columns={
-                "Zeit": "entry_time",
-                "Preis_trade": "entry_price",
-                "Volumen_trade": "entry_volume",
-                "Typ_trade": "entry_type",
-            }
-        )
-        df_exit = df_exit.rename(
-            columns={
-                "Zeit": "exit_time",
-                "Preis_trade": "exit_price",
-                "Volumen_trade": "exit_volume",
-                "Typ_trade": "exit_type",
-                "Gewinn": "pnl",
-            }
-        )
+        positions: List[Dict[str, Any]] = []
+        open_positions: List[Dict[str, Any]] = []
+        next_ticket = 1
 
-        # Entry- und Exit-Zeilen per Trade-ID mergen
-        merged = pd.merge(
-            df_entry,
-            df_exit[
-                [
-                    "Trade",
-                    "exit_time",
-                    "exit_price",
-                    "exit_volume",
-                    "exit_type",
-                    "pnl",
-                ]
-            ],
-            on="Trade",
-            how="left",
-            suffixes=("_entry", "_exit"),
-        )
+        # Hilfsfunktion: long/short aus Typ_trade bestimmen
+        def side_from_type(typ: str) -> int:
+            typ = str(typ).lower()
+            if typ == "buy":
+                return 1
+            elif typ == "sell":
+                return -1
+            else:
+                return 0
 
-        # Tradingrichtung: aus entry_type (buy/sell)
-        # buy -> long (1), sell -> short (-1)
-        merged["direction"] = merged["entry_type"].map(
-            {"buy": 1, "sell": -1}
-        )
+        for _, row in df.iterrows():
+            richtung = str(row["Richtung"]).strip().lower()
+            typ_trade = str(row["Typ_trade"]).strip().lower()
+            symbol = str(row["Symbol_trade"]).strip()
 
-        # Positionsvolumen: wir nehmen das Volumen der Entry-Zeile
-        merged["volume"] = merged["entry_volume"]
+            # Manche Zeilen sind leer / nur Balance etc.
+            if symbol == "" or symbol.lower() == "balance":
+                continue
 
-        # Standardisierte Spalten zusammenbauen
-        result = pd.DataFrame(
-            {
-                "ticket": merged["Trade"].astype(int),
-                "entry_time": merged["entry_time"],
-                "exit_time": merged["exit_time"],
-                "symbol": merged["Symbol_trade"],
-                "direction": merged["direction"],
-                "volume": merged["volume"],
-                "entry_price": merged["entry_price"],
-                "exit_price": merged["exit_price"],
-                "pnl": merged["pnl"],
-                # Kommission aktuell nicht vorhanden -> 0
-                "commission": 0.0,
-            }
-        )
+            vol = float(row["Volumen_trade"])
+            price = float(row["Preis_trade"])
+            time = row["Eröffnungszeit"]
+            pnl = float(row["Gewinn"]) if not pd.isna(row["Gewinn"]) else 0.0
 
-        # Optional: Zeilen ohne Exit (z.B. noch offene Trades) entfernen
-        result = result.dropna(subset=["exit_time", "exit_price", "pnl"])
+            side = side_from_type(typ_trade)
+            if side == 0:
+                # Unbekannter Typ, überspringen
+                continue
 
-        logger.info(f"✅ Loaded {len(result)} closed positions from {csv_path}")
-        logger.info(
-            f"Date range: {result['entry_time'].min()} to {result['exit_time'].max()}"
-        )
+            if richtung == "in":
+                # Neue offene Position anlegen
+                open_positions.append(
+                    {
+                        "symbol": symbol,
+                        "side": side,
+                        "volume": vol,
+                        "entry_time": time,
+                        "entry_price": price,
+                        "mt5_trade_id": int(row["Trade"]),
+                    }
+                )
+            elif richtung == "out":
+                # Passende offene Position suchen:
+                # gleiche Richtung (side), gleiches Symbol, Volumen-Toleranz
+                match_index = None
+                for i in range(len(open_positions) - 1, -1, -1):
+                    pos = open_positions[i]
+                    if (
+                        pos["symbol"] == symbol
+                        and pos["side"] == side
+                        and abs(pos["volume"] - vol) < 1e-6
+                    ):
+                        match_index = i
+                        break
+
+                if match_index is None:
+                    # Kein passender Entry gefunden -> Warnung, aber nicht crashen
+                    logger.warning(
+                        "No matching open position for exit: Trade=%s Symbol=%s side=%s vol=%s time=%s",
+                        row["Trade"],
+                        symbol,
+                        side,
+                        vol,
+                        time,
+                    )
+                    continue
+
+                entry_pos = open_positions.pop(match_index)
+
+                positions.append(
+                    {
+                        "ticket": next_ticket,
+                        "entry_time": entry_pos["entry_time"],
+                        "exit_time": time,
+                        "symbol": symbol,
+                        "direction": side,
+                        "volume": vol,
+                        "entry_price": entry_pos["entry_price"],
+                        "exit_price": price,
+                        "pnl": pnl,
+                        "commission": 0.0,  # kannst du später aus Kommission-Spalte ziehen
+                        "mt5_entry_trade_id": entry_pos["mt5_trade_id"],
+                        "mt5_exit_trade_id": int(row["Trade"]),
+                    }
+                )
+                next_ticket += 1
+            else:
+                # unbekannte Richtung -> ignorieren
+                continue
+
+        result = pd.DataFrame(positions)
+
+        if result.empty:
+            logger.warning("No closed positions could be constructed from CSV")
+        else:
+            logger.info("Constructed %d closed positions", len(result))
+            logger.info(
+                "Date range: %s to %s",
+                result["entry_time"].min(),
+                result["exit_time"].max(),
+            )
 
         return result
 
@@ -181,12 +215,24 @@ class MT5TradesLoader:
         Returns:
             Dictionary mit Validierungsergebnissen
         """
+        if df.empty:
+            return {
+                "total_trades": 0,
+                "date_range": (None, None),
+                "symbols": [],
+                "total_pnl": 0.0,
+                "win_rate": 0.0,
+                "avg_win": 0.0,
+                "avg_loss": 0.0,
+                "has_missing_values": False,
+            }
+
         results = {
             "total_trades": len(df),
             "date_range": (df["entry_time"].min(), df["exit_time"].max()),
             "symbols": df["symbol"].unique().tolist(),
             "total_pnl": df["pnl"].sum(),
-            "win_rate": (df["pnl"] > 0).sum() / len(df) if len(df) > 0 else 0.0,
+            "win_rate": (df["pnl"] > 0).sum() / len(df),
             "avg_win": df[df["pnl"] > 0]["pnl"].mean()
             if (df["pnl"] > 0).any()
             else 0.0,
@@ -197,9 +243,9 @@ class MT5TradesLoader:
         }
 
         logger.info("Trade Validation Results:")
-        logger.info(f" Total Trades: {results['total_trades']}")
-        logger.info(f" Total PnL: ${results['total_pnl']:.2f}")
-        logger.info(f" Win Rate: {results['win_rate']:.2%}")
+        logger.info(" Total Trades: %d", results["total_trades"])
+        logger.info(" Total PnL: $%.2f", results["total_pnl"])
+        logger.info(" Win Rate: %.2f%%", results["win_rate"] * 100)
 
         return results
 
@@ -207,13 +253,14 @@ class MT5TradesLoader:
 if __name__ == "__main__":
     loader = MT5TradesLoader()
 
-    # Pfad zu deiner merged CSV aus dem Converter
+    # Testlauf mit deiner Datei (Pfad ggf. anpassen)
     csv_path = r"G:\DAVID\Desktop\GitHub\quant_validation_pipeline_mt5\data\processed\RangeBreakOut_USDJPY_trades_merged.csv"
 
     trades_df = loader.load_trades(csv_path)
     validation = loader.validate_trades(trades_df)
 
-    # Optional: Speichern als Parquet
+    from pathlib import Path
+
     storage_path = (
         r"G:\DAVID\Desktop\GitHub\quant_validation_pipeline_mt5\storage\trades.parquet"
     )

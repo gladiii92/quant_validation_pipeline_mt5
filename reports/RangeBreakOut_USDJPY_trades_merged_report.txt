@@ -1,0 +1,15 @@
+QUANT VALIDATION PIPELINE REPORT
+============================================================
+
+Strategy: RangeBreakOut_USDJPY_trades_merged
+Date Range: 2024-02-01 07:00:00 to 2025-04-25 07:00:00
+
+METRICS:
+ Total Trades: 149
+ Total Return: 49.11%
+ Sharpe Ratio: 0.93
+ Max Drawdown: 45.50%
+ Win Rate: 44.30%
+
+DECISION: CONDITIONAL_PASS
+Reason: One criterion violated: Max Drawdown 45.5% > 25.0%
