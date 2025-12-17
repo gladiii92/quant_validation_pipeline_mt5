@@ -59,23 +59,22 @@ backtest:
 
 validation:
   # Minimale Sharpe-Ratio (Out-of-Sample)
+  min_oos_sharpe: 0.8
 
-min_oos_sharpe: 0.8
   # Minimale Monte-Carlo Erfolgswahrscheinlichkeit
+  min_mc_positive_prob: 0.75
 
-min_mc_positive_prob: 0.75
   # Maximaler Drawdown
+  max_drawdown: 0.25  # 25%
 
-max_drawdown: 0.25 # 25%
   # Minimum Korrelation MT5 vs. Python Backtest
+  min_mt5_correlation: 0.80
 
-min_mt5_correlation: 0.80
   # Walk-Forward Test Parameter
-
-walk_forward:
-  train_window: 252 # ~1 Jahr tägliche Daten
-  test_window: 63 # ~3 Monate
-  step_size: 21 # ~1 Monat Schritt
+  walk_forward:
+    train_window: 252   # ~1 Jahr tägliche Daten
+    test_window: 63     # ~3 Monate
+    step_size: 21       # ~1 Monat Schritt
 
 # ============================================================
 # LOGGING

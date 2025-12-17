@@ -1,0 +1,147 @@
+# ============================================================
+# STRATEGY ASSUMPTIONS: Mean Reversion Z-Score
+# ============================================================
+
+strategy:
+  name: "Mean Reversion Z-Score"
+  author: "Your Name"
+  created: "2025-01-15"
+  version: "1.0"
+  description: |
+    Kurzbeschreibung der Strategie:
+    - Nutzt Z-Score des Preises
+    - Shortet bei Z > +2.0, glattet bei Z < +0.5
+    - Longt bei Z < -2.0, glattet bei Z > -0.5
+
+# ============================================================
+# GÜLTIGKEITSBEREICHE
+# ============================================================
+
+valid_ranges:
+  # Volatilität: Strategie funktioniert am besten in dieser Vol-Range
+  volatility_percent:
+    min: 5.0
+    max: 30.0
+    unit: "ATR in %"
+
+  # Trend-Stärke: Nur in Range-gebundenen Märkten
+  adr_ratio:
+    min: 0.3
+    max: 0.8
+    description: "ADR / ATR Ratio - niedrig = range-bound"
+
+  # Timeframe
+  allowed_timeframes: ["M5", "M15", "H1"]
+
+  # Symbole (Liquidität wichtig!)
+  allowed_symbols: ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD"]
+  forbidden_symbols: ["Exotics mit wenig Liquidität"]
+
+# ============================================================
+# REGIME-ABHÄNGIGKEIT (mit HMM)
+# ============================================================
+
+regime_compatibility:
+  Bull:
+    compatible: true
+    performance_expected: "Above Average"
+
+  Neutral:
+    compatible: true
+    performance_expected: "Best Performance"
+
+  Bear:
+    compatible: true
+    performance_expected: "Average"
+
+  HighVolatility:
+    compatible: false
+    reason: "Z-Score unreliable during vol spikes"
+
+  Crash:
+    compatible: false
+    reason: "Stop losses triggered during flash crashes"
+
+# ============================================================
+# PARAMETER RANGES
+# ============================================================
+
+parameters:
+  lookback_period:
+    min: 10
+    max: 50
+    optimal: 20
+    description: "Lookback für Z-Score Berechnung"
+
+  entry_z:
+    min: 1.5
+    max: 3.0
+    optimal: 2.0
+    description: "Z-Score Eintritts-Schwelle (|Z| zum Entry)"
+
+  exit_z:
+    min: -0.5
+    max: 1.0
+    optimal: 0.0
+    description: "Z-Score Ausstiegs-Schwelle"
+
+  position_size:
+    min: 0.01
+    max: 0.10
+    optimal: 0.02
+    description: "Lot-Größe pro Trade (relativ zu Konto)"
+
+# ============================================================
+# BEKANNTE FAILURE MODES
+# ============================================================
+
+failure_modes:
+  - mode: "Flash Crash"
+    description: "Große Preissprünge ohne Übergangspreise"
+    mitigation: "Erhöhe Stop-Loss, reduziere Position"
+    likelihood: "Low, aber High Impact"
+
+  - mode: "Breakout aus Range"
+    description: "Wenn Range-Gebundenheit zusammenbricht"
+    mitigation: "Nutze Trend-Filter, oder schalte aus"
+    likelihood: "Medium"
+
+  - mode: "Volatility Explosion"
+    description: "Plötzlich steigende Volatilität (Earnings, NFP)"
+    mitigation: "Pausiere bei hohem Vol-Regime"
+    likelihood: "Medium"
+
+  - mode: "Liquidity Crunch"
+    description: "Weniger Trading Volume (Feiertage, Wochenende)"
+    mitigation: "Trade nur Main Sessions, größere Spreads einpreisen"
+    likelihood: "Low, aber bekannt"
+
+# ============================================================
+# VERBOTENE BEDINGUNGEN (Hard Rules)
+# ============================================================
+
+forbidden_conditions:
+  - "Do NOT trade 30 min before NFP releases"
+  - "Do NOT trade if Volatility > 40% (ATR_percent)"
+  - "Do NOT trade if Spreads > 3 pips (IC Markets normal 1.5)"
+  - "Do NOT trade pairs with < 1M volume"
+  - "Do NOT trade weekends or holidays"
+
+# ============================================================
+# RÜCKTESTS / KNOWN GOOD PERIODS
+# ============================================================
+
+backtest_performance:
+  period: "2023-01-01 to 2024-12-31"
+  total_trades: 450
+  win_rate: 0.58
+  sharpe_ratio: 1.8
+  max_drawdown: 0.18
+
+  best_periods:
+    - "2024-Q2 (Earnings Season, High Vol)"
+    - "2024-Q4 (Year-End Range)"
+
+  worst_periods:
+    - "2024-03-08 (Central Bank Speech, Spike)"
+    - "2023-09-21 (FOMC Day, High Impact)"
