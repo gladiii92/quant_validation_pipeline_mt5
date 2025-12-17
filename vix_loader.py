@@ -1,4 +1,3 @@
-# vix_loader.py
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -11,12 +10,15 @@ logger = get_logger(__name__)
 
 
 def _download_vix_history(start: str = "2000-01-01") -> pd.DataFrame:
+    """
+    Lädt VIX Historie (^VIX) von Yahoo Finance.
+    """
     logger.info("Downloading VIX history from Yahoo Finance (^VIX)...")
     data = yf.download("^VIX", start=start)
     if data.empty:
         raise RuntimeError("No VIX data downloaded from Yahoo Finance")
 
-    # Falls MultiIndex-Spalten (z.B. ('Close','^VIX')):
+    # MultiIndex-Spalten absichern
     if isinstance(data.columns, pd.MultiIndex):
         close = data["Close"]["^VIX"]
     else:
@@ -39,6 +41,11 @@ def load_vix_regimes(
     cache_path: str = "data/external/vix_daily.csv",
     max_age_days: int = 14,
 ) -> pd.Series:
+    """
+    Liefert eine tägliche VIX-Regime-Zeitreihe (Low_Volatility, Range, High_Volatility, Crash).
+
+    Aktualisiert die lokale CSV automatisch, wenn sie älter als max_age_days ist.
+    """
     cache_file = Path(cache_path)
     cache_file.parent.mkdir(parents=True, exist_ok=True)
 
@@ -53,9 +60,7 @@ def load_vix_regimes(
     df = df.sort_values("Date").set_index("Date")
     vix = df["Close"].astype(float)
 
-    # Regime-Serien-Index exakt wie vix
     regimes = pd.Series(index=vix.index, dtype="object")
-
     regimes[vix < 15] = "Low_Volatility"
     regimes[(vix >= 15) & (vix < 25)] = "Range"
     regimes[(vix >= 25) & (vix < 35)] = "High_Volatility"

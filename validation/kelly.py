@@ -1,9 +1,5 @@
 """
 Kelly-basiertes Positionssizing aus empirischen Trade-Daten.
-
-- Schätzt Win-Rate und Payoff-Ratio.
-- Berechnet theoretische Kelly-Quote.
-- Gibt konservative Fractional-Kelly-Empfehlung zurück.
 """
 
 from typing import Dict, Any
@@ -27,11 +23,9 @@ def estimate_kelly_from_trades(trades_df: pd.DataFrame) -> Dict[str, Any]:
         Dict mit:
         - win_rate
         - avg_win
-        - avg_loss (als positive Zahl)
-        - payoff_ratio (avg_win / avg_loss)
-        - kelly_full (theoretische Kelly-Quote, 0..1, negative Werte auf 0 geclipped)
-        - kelly_half (0.5 * kelly_full)
-        - kelly_quarter (0.25 * kelly_full)
+        - avg_loss (positiv)
+        - payoff_ratio
+        - kelly_full, kelly_half, kelly_quarter
     """
     if "pnl" not in trades_df.columns:
         raise ValueError("trades_df must contain 'pnl' column")
@@ -61,14 +55,11 @@ def estimate_kelly_from_trades(trades_df: pd.DataFrame) -> Dict[str, Any]:
 
     payoff_ratio = avg_win / avg_loss if avg_loss > 0 else 0.0
 
-    # Klassische Kelly-Formel: f* = p - q / R
-    # p = win_rate, q = loss_rate, R = avg_win / avg_loss
     if payoff_ratio > 0:
         kelly_full = win_rate - (loss_rate / payoff_ratio)
     else:
         kelly_full = 0.0
 
-    # Clip auf [0, 1] für sinnvolle Interpretierbarkeit
     kelly_full = float(np.clip(kelly_full, 0.0, 1.0))
 
     result = {

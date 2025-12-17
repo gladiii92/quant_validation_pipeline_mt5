@@ -1,11 +1,8 @@
 """
 Kosten-/Slippage-Szenarien auf Trade-PnL.
-
-- Skaliert die PnL-Sequenz nach unten (z.B. -25%, -50%).
-- Berechnet Metriken pro Szenario.
 """
 
-from typing import Dict, Any, List
+from typing import Dict, Any
 
 import pandas as pd
 
@@ -25,12 +22,12 @@ def run_cost_scenarios(
 
     Args:
         trades_df: DataFrame mit Spalte 'pnl'.
-        initial_capital: Startkapital (z.B. 100000.0).
+        initial_capital: Startkapital.
         scenarios: Dict Name -> Faktor, z.B.:
             {"base": 1.0, "cost_plus_25": 0.75, "cost_plus_50": 0.5}
 
     Returns:
-        Dict name -> metrics_dict (wie calculate_metrics)
+        Dict name -> metrics_dict
     """
     if "pnl" not in trades_df.columns:
         raise ValueError("trades_df must contain 'pnl' column")

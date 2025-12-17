@@ -1,18 +1,21 @@
-# validation/regime_alignment.py
+"""
+VIX-Regime-Ausrichtung der Strategie gemäss regime_policy.yaml.
+"""
+
 from typing import Dict, Any
 
 import pandas as pd
 
 from backtest.metrics import calculate_metrics
 from utils.logger import get_logger
-from utils.config import load_config  # nutzt du bereits für config.yaml
+from utils.config import load_config
 
 logger = get_logger(__name__)
 
 
 def _load_regime_policy(policy_path: str) -> Dict[str, Any]:
     """
-    Lädt regime_policy.yaml mit demselben Loader wie deine Hauptconfig.
+    Lädt regime_policy.yaml.
     """
     policy = load_config(policy_path)
     if "strategies" not in policy:
@@ -28,19 +31,7 @@ def analyze_vix_regime_alignment(
     strategy_key: str = "range_breakout",
 ) -> Dict[str, Any]:
     """
-    Ordnet Trades VIX-Regimen zu und vergleicht die Performance mit der Policy.
-
-    Args:
-        trades_df: MT5-Trades mit 'entry_time' und 'pnl'.
-        vix_regimes: pd.Series mit Index=Date, Wert=Regime-Name (z.B. 'Low_Volatility').
-        initial_capital: Startkapital.
-        policy_path: Pfad zu regime_policy.yaml.
-        strategy_key: Key in regime_policy.yaml (z.B. 'range_breakout').
-
-    Returns:
-        Dict mit:
-        - regime_stats: Dict regime_name -> metrics (+ n_trades)
-        - policy: Dict der Policy für strategy_key
+    Ordnet Trades VIX-Regimen zu und vergleicht Performance mit der Policy.
     """
     df = trades_df.copy()
 
@@ -49,14 +40,11 @@ def analyze_vix_regime_alignment(
     if "pnl" not in df.columns:
         raise ValueError("trades_df must contain 'pnl' column")
 
-    # Auf Tagesbasis mappen
     df["date"] = df["entry_time"].dt.floor("D")
     vix_regimes = vix_regimes.sort_index()
 
-    # Map per reindex auf 'date'
     df["vix_regime"] = vix_regimes.reindex(df["date"]).values
 
-    # Regime-Statistiken
     regime_stats: Dict[str, Any] = {}
     for name in sorted(df["vix_regime"].dropna().unique()):
         sub = df[df["vix_regime"] == name]
@@ -84,9 +72,7 @@ def analyze_vix_regime_alignment(
 
     policy_full = _load_regime_policy(policy_path)
     if "strategies" not in policy_full or strategy_key not in policy_full["strategies"]:
-        raise ValueError(
-            f"Strategy '{strategy_key}' not found in regime_policy.yaml"
-        )
+        raise ValueError(f"Strategy '{strategy_key}' not found in regime_policy.yaml")
 
     strat_policy = policy_full["strategies"][strategy_key]
 

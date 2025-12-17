@@ -5,60 +5,38 @@ Strategy: RangeBreakOut_USDJPY_trades_merged
 Date Range: 2024-02-01 07:00:00 to 2025-04-25 21:20:00
 
 METRICS:
- Total Trades: 354
- Total Return: 35.36%
- Sharpe Ratio: 2.79
- Max Drawdown: 3.86%
- Win Rate: 51.13%
-
-MONTE CARLO:
- mc_positive_prob: 100.00%
- mc_median_return: 35.22%
- mc_p5_return: 18.32%
- mc_p95_return: 53.21%
- mc_median_max_dd: 3.86%
- mc_p95_max_dd: 6.65%
+|      | Total Return   |   Sharpe | MaxDD   | WinRate   |   Trades |
+|:-----|:---------------|---------:|:--------|:----------|---------:|
+| Base | 35.36%         |     2.79 | 3.86%   | 51.13%    |      354 |
 
 COST SCENARIOS:
- base:
-   Total Return: 35.36%
-   Sharpe Ratio: 2.79
-   Max Drawdown: 3.86%
-   Profit Factor: 1.72
- cost_plus_25:
-   Total Return: 26.52%
-   Sharpe Ratio: 2.79
-   Max Drawdown: 2.89%
-   Profit Factor: 1.72
- cost_plus_50:
-   Total Return: 17.68%
-   Sharpe Ratio: 2.79
-   Max Drawdown: 1.93%
-   Profit Factor: 1.72
+| Scenario     | Total Return   |   Sharpe | MaxDD   |   PF |
+|:-------------|:---------------|---------:|:--------|-----:|
+| base         | 35.36%         |     2.79 | 3.86%   | 1.72 |
+| cost_plus_25 | 26.52%         |     2.79 | 2.89%   | 1.72 |
+| cost_plus_50 | 17.68%         |     2.79 | 1.93%   | 1.72 |
 
-KELLY SIZING (empirisch):
- win_rate: 51.13%
- avg_win: 465.90
- avg_loss: 283.03
- payoff_ratio: 1.65
- kelly_full: 21.44%
- kelly_half: 10.72%
- kelly_quarter: 5.36%
+KELLY SIZING:
+|       | win_rate   |   payoff | full   | half   | quarter   |
+|:------|:-----------|---------:|:-------|:-------|:----------|
+| Kelly | 51.13%     |     1.65 | 21.44% | 10.72% | 5.36%     |
 
-VIX REGIME ALIGNMENT:
- Policy allowed_regimes:
-  Breakout: position_size=1.0, max_leverage=1.5, confidence=0.95
-  Bull: position_size=0.8, max_leverage=1.5, confidence=0.85
-  Bear: position_size=0.8, max_leverage=1.5, confidence=0.85
-  High_Volatility: position_size=0.5, max_leverage=1.0, confidence=0.7
- Policy forbidden_regimes:
-  Range: status=CONDITIONAL_PASS, reason=Zu viele Fake-Breakouts in klaren Ranges
-  Crash: status=FAIL_FAST, reason=Extremes Slippage, unzuverlässige Breakout-Level
-  Spike: status=FAIL_FAST, reason=Einmalige Spikes triggern Stops und Entries zufällig
- Empirical performance per VIX regime:
-  High_Volatility: n_trades=15, TotalReturn=4.53%, Sharpe=4.28, MaxDD=0.57%, PF=3.36
-  Low_Volatility: n_trades=156, TotalReturn=15.85%, Sharpe=2.79, MaxDD=2.22%, PF=1.76
-  Range: n_trades=161, TotalReturn=13.37%, Sharpe=2.69, MaxDD=2.42%, PF=1.58
+VIX REGIME PERFORMANCE:
+| Regime          |   Trades | Total Return   |   Sharpe | MaxDD   |   PF |
+|:----------------|---------:|:---------------|---------:|:--------|-----:|
+| High_Volatility |       15 | 4.53%          |     4.28 | 0.57%   | 3.36 |
+| Low_Volatility  |      156 | 15.85%         |     2.79 | 2.22%   | 1.76 |
+| Range           |      161 | 13.37%         |     2.69 | 2.42%   | 1.58 |
 
-DECISION: LIVE_ELIGIBLE
-Reason: All validation criteria passed ✅
+MONTE CARLO SUMMARY:
+ mc_positive_prob: 100.00%
+ mc_median_return: 35.83%
+ mc_p5_return: 19.22%
+ mc_p95_return: 54.92%
+ mc_median_max_dd: 3.86%
+ mc_p95_max_dd: 6.42%
+
+DECISION GATE:
+ Status: LIVE_ELIGIBLE
+ Confidence: 90.00%
+ Reason: All validation criteria passed ✅

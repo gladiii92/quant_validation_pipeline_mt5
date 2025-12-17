@@ -12,6 +12,11 @@ git commit -m "XXX"
 4. 
 git push origin main
 
+5.
+python run_pipeline.py --trades-file data\processed\RangeBreakOut_USDJPY_trades_merged.csv --config config.yaml
+
+6.
+python generate_html_report.py --summary reports\RangeBreakOut_USDJPY_trades_merged_summary.json
 
 
 ______________________________________________________
