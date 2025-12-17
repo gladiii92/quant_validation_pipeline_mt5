@@ -11,5 +11,13 @@ METRICS:
  Max Drawdown: 38.32%
  Win Rate: 50.42%
 
+MONTE CARLO:
+ mc_positive_prob: 100.00%
+ mc_median_return: 394.89%
+ mc_p5_return: 220.64%
+ mc_p95_return: 586.15%
+ mc_median_max_dd: 37.04%
+ mc_p95_max_dd: 63.64%
+
 DECISION: CONDITIONAL_PASS
 Reason: One criterion violated: Max Drawdown 38.3% > 25.0%

@@ -7,17 +7,21 @@ Nutzung:
 Diese Datei orchestriert die gesamte Pipeline:
 1. MT5-Trades importieren
 2. Metriken berechnen
-3. Robustheitstests (optional)
+3. Monte-Carlo-Robustheitstests
 4. Decision Gate
-5. Report ausgeben
+5. Report + Plots ausgeben
 """
 
 import argparse
 from pathlib import Path
 
+import matplotlib.pyplot as plt
+import numpy as np
+
 from mt5_integration.trades_loader import MT5TradesLoader
 from backtest.metrics import calculate_metrics
 from validation.gates import DecisionGate
+from validation.monte_carlo import run_monte_carlo_on_trades
 from utils.logger import get_logger
 from utils.config import load_config
 
@@ -76,18 +80,90 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml") -> None
     logger.info(" Max Drawdown: %.2f%%", metrics["max_drawdown"] * 100)
     logger.info(" Win Rate: %.2f%%", metrics["win_rate"] * 100)
 
-    # === SCHRITT 5: Decision Gate ===
-    logger.info("\n[STEP 5] Running Decision Gate...")
+    # === SCHRITT 5: Monte-Carlo auf Trades ===
+    logger.info("\n[STEP 5] Running Monte Carlo on trade sequence...")
+
+    mc_results = run_monte_carlo_on_trades(
+        trades_df,
+        initial_capital=initial_capital,
+        n_sims=5000,
+        random_state=42,
+    )
+
+    logger.info("✅ Monte Carlo finished")
+    logger.info(" mc_positive_prob: %.2f%%", mc_results["mc_positive_prob"] * 100)
+    logger.info(" mc_median_return: %.2f%%", mc_results["mc_median_return"] * 100)
+    logger.info(" mc_p5_return: %.2f%%", mc_results["mc_p5_return"] * 100)
+    logger.info(" mc_p95_return: %.2f%%", mc_results["mc_p95_return"] * 100)
+    logger.info(" mc_median_max_dd: %.2f%%", mc_results["mc_median_max_dd"] * 100)
+    logger.info(" mc_p95_max_dd: %.2f%%", mc_results["mc_p95_max_dd"] * 100)
+
+    # === Visualisierung: Histogramm der MC-Returns ===
+    logger.info("[PLOT] Saving Monte Carlo return distribution...")
+
+    reports_dir = Path("reports")
+    reports_dir.mkdir(exist_ok=True)
+
+    returns = np.array(mc_results["total_returns"])
+    unique_vals = np.unique(returns)
+
+    plt.figure(figsize=(8, 5))
+
+    data_min = float(returns.min())
+    data_max = float(returns.max())
+    data_range = data_max - data_min
+
+    # Fall 1: Alle Werte identisch ODER Range extrem klein → Bar-Plot
+    if len(unique_vals) <= 1 or data_range < 1e-6:
+        center = float(returns.mean())
+        height = len(returns)
+        # Breite ein bisschen relativ zum Wert wählen, damit man etwas sieht
+        width = 0.001 * max(1.0, abs(center))
+
+        plt.bar(
+            [center],
+            [height],
+            width=width,
+            color="steelblue",
+            edgecolor="black",
+        )
+        plt.axvline(center, color="red", linestyle="--", label="Return")
+    else:
+        # Fall 2: „normale“ Verteilung → Histogramm
+        n_unique = len(unique_vals)
+        bins = max(5, min(50, n_unique))
+        plt.hist(returns, bins=bins, color="steelblue", edgecolor="black")
+        plt.axvline(
+            mc_results["mc_median_return"], color="red", linestyle="--", label="Median"
+        )
+        plt.axvline(
+            mc_results["mc_p5_return"], color="orange", linestyle="--", label="5%"
+        )
+        plt.axvline(
+            mc_results["mc_p95_return"], color="green", linestyle="--", label="95%"
+        )
+
+    plt.title("Monte Carlo Total Return Distribution (Trades-Level)")
+    plt.xlabel("Total Return")
+    plt.ylabel("Frequency")
+    plt.legend()
+    plt.tight_layout()
+
+    mc_plot_path = reports_dir / f"{Path(trades_csv_path).stem}_mc_returns.png"
+    plt.savefig(mc_plot_path)
+    plt.close()
+
+    logger.info("✅ Monte Carlo return plot saved to %s", mc_plot_path)
+
+    # === SCHRITT 6: Decision Gate ===
+    logger.info("\n[STEP 6] Running Decision Gate...")
     gate = DecisionGate(config_path)
 
-    # Verwandle Metriken ins Gate-Format
     gate_metrics = {
-        "oos_sharpe": metrics.get("sharpe_ratio", 0.0),  # später: echte OOS-Sharpe
+        "oos_sharpe": metrics.get("sharpe_ratio", 0.0),  # vorerst Gesamt-Sharpe
         "max_drawdown": metrics.get("max_drawdown", 1.0),
-        # Platzhalter, später aus Monte-Carlo / Heston etc.
-        "mc_positive_prob": 0.80,
-        # Platzhalter, später aus Korrelation Python-Backtest vs. MT5
-        "mt5_correlation": 0.90,
+        "mc_positive_prob": mc_results["mc_positive_prob"],
+        "mt5_correlation": 0.90,  # TODO: später durch echte Korrelation ersetzen
     }
 
     result = gate.evaluate(gate_metrics)
@@ -104,10 +180,10 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml") -> None
 
     logger.info("%s\n", "=" * 60)
 
-    # === SCHRITT 6: Report speichern ===
-    logger.info("[STEP 6] Saving report...")
-    Path("reports").mkdir(exist_ok=True)
-    report_path = Path("reports") / f"{Path(trades_csv_path).stem}_report.txt"
+    # === SCHRITT 7: Report speichern ===
+    logger.info("[STEP 7] Saving report...")
+    reports_dir.mkdir(exist_ok=True)
+    report_path = reports_dir / f"{Path(trades_csv_path).stem}_report.txt"
 
     with open(report_path, "w", encoding="utf-8") as f:
         f.write("QUANT VALIDATION PIPELINE REPORT\n")
@@ -123,6 +199,14 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml") -> None
         f.write(f" Sharpe Ratio: {metrics['sharpe_ratio']:.2f}\n")
         f.write(f" Max Drawdown: {metrics['max_drawdown']:.2%}\n")
         f.write(f" Win Rate: {metrics['win_rate']:.2%}\n\n")
+
+        f.write("MONTE CARLO:\n")
+        f.write(f" mc_positive_prob: {mc_results['mc_positive_prob']:.2%}\n")
+        f.write(f" mc_median_return: {mc_results['mc_median_return']:.2%}\n")
+        f.write(f" mc_p5_return: {mc_results['mc_p5_return']:.2%}\n")
+        f.write(f" mc_p95_return: {mc_results['mc_p95_return']:.2%}\n")
+        f.write(f" mc_median_max_dd: {mc_results['mc_median_max_dd']:.2%}\n")
+        f.write(f" mc_p95_max_dd: {mc_results['mc_p95_max_dd']:.2%}\n\n")
 
         f.write(f"DECISION: {result.status.value}\n")
         f.write(f"Reason: {result.reason}\n")
