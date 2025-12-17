@@ -20,11 +20,13 @@ import numpy as np
 
 from mt5_integration.trades_loader import MT5TradesLoader
 from backtest.metrics import calculate_metrics
+from vix_loader import load_vix_regimes
 
 from validation.gates import DecisionGate
 from validation.monte_carlo import run_monte_carlo_on_trades
 from validation.cost_scenarios import run_cost_scenarios
 from validation.kelly import estimate_kelly_from_trades
+from validation.regime_alignment import analyze_vix_regime_alignment
 
 from utils.logger import get_logger
 from utils.config import load_config
@@ -109,8 +111,27 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml") -> None
 
     logger.info("✅ Kelly estimation finished")
 
+    # === SCHRITT 7: VIX-Regime-Ausrichtung ===
 
-    # === SCHRITT 7: Monte-Carlo auf Trades ===
+    logger.info("\n[STEP X] Loading VIX regimes and checking alignment...")
+
+    vix_regimes = load_vix_regimes(
+        cache_path="data/external/vix_daily.csv",
+        max_age_days=14,
+    )
+
+    vix_alignment = analyze_vix_regime_alignment(
+        trades_df=trades_df,
+        vix_regimes=vix_regimes,
+        initial_capital=initial_capital,
+        policy_path="regime_policy.yaml",
+        strategy_key="range_breakout",
+    )
+
+    logger.info("✅ VIX regime alignment finished")
+
+
+    # === SCHRITT 8: Monte-Carlo auf Trades ===
     logger.info("\n[STEP 5] Running Monte Carlo on trade sequence...")
 
     mc_results = run_monte_carlo_on_trades(
@@ -185,7 +206,7 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml") -> None
 
     logger.info("✅ Monte Carlo return plot saved to %s", mc_plot_path)
 
-    # === SCHRITT 8: Decision Gate ===
+    # === SCHRITT 9: Decision Gate ===
     logger.info("\n[STEP 6] Running Decision Gate...")
     gate = DecisionGate(config_path)
 
@@ -210,7 +231,7 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml") -> None
 
     logger.info("%s\n", "=" * 60)
 
-    # === SCHRITT 9: Report speichern ===
+    # === SCHRITT 10: Report speichern ===
     logger.info("[STEP 7] Saving report...")
     reports_dir.mkdir(exist_ok=True)
     report_path = reports_dir / f"{Path(trades_csv_path).stem}_report.txt"
@@ -255,6 +276,37 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml") -> None
         f.write(f" kelly_full: {kelly_info['kelly_full']:.2%}\n")
         f.write(f" kelly_half: {kelly_info['kelly_half']:.2%}\n")
         f.write(f" kelly_quarter: {kelly_info['kelly_quarter']:.2%}\n\n")
+
+        f.write("VIX REGIME ALIGNMENT:\n")
+
+        policy = vix_alignment["policy"]
+        stats = vix_alignment["regime_stats"]
+
+        f.write(" Policy allowed_regimes:\n")
+        for r_name, cfg in policy.get("allowed_regimes", {}).items():
+            f.write(
+                f"  {r_name}: position_size={cfg.get('position_size')}, "
+                f"max_leverage={cfg.get('max_leverage')}, "
+                f"confidence={cfg.get('confidence')}\n"
+            )
+
+        f.write(" Policy forbidden_regimes:\n")
+        for r_name, cfg in policy.get("forbidden_regimes", {}).items():
+            f.write(
+                f"  {r_name}: status={cfg.get('status')}, "
+                f"reason={cfg.get('reason')}\n"
+            )
+
+        f.write(" Empirical performance per VIX regime:\n")
+        for r_name, m in stats.items():
+            f.write(
+                f"  {r_name}: n_trades={m['n_trades']}, "
+                f"TotalReturn={m['total_return']:.2%}, "
+                f"Sharpe={m['sharpe_ratio']:.2f}, "
+                f"MaxDD={m['max_drawdown']:.2%}, "
+                f"PF={m['profit_factor']:.2f}\n"
+            )
+        f.write("\n")
 
         f.write(f"DECISION: {result.status.value}\n")
         f.write(f"Reason: {result.reason}\n")

@@ -45,5 +45,20 @@ KELLY SIZING (empirisch):
  kelly_half: 10.72%
  kelly_quarter: 5.36%
 
+VIX REGIME ALIGNMENT:
+ Policy allowed_regimes:
+  Breakout: position_size=1.0, max_leverage=1.5, confidence=0.95
+  Bull: position_size=0.8, max_leverage=1.5, confidence=0.85
+  Bear: position_size=0.8, max_leverage=1.5, confidence=0.85
+  High_Volatility: position_size=0.5, max_leverage=1.0, confidence=0.7
+ Policy forbidden_regimes:
+  Range: status=CONDITIONAL_PASS, reason=Zu viele Fake-Breakouts in klaren Ranges
+  Crash: status=FAIL_FAST, reason=Extremes Slippage, unzuverlässige Breakout-Level
+  Spike: status=FAIL_FAST, reason=Einmalige Spikes triggern Stops und Entries zufällig
+ Empirical performance per VIX regime:
+  High_Volatility: n_trades=15, TotalReturn=4.53%, Sharpe=4.28, MaxDD=0.57%, PF=3.36
+  Low_Volatility: n_trades=156, TotalReturn=15.85%, Sharpe=2.79, MaxDD=2.22%, PF=1.76
+  Range: n_trades=161, TotalReturn=13.37%, Sharpe=2.69, MaxDD=2.42%, PF=1.58
+
 DECISION: LIVE_ELIGIBLE
 Reason: All validation criteria passed ✅

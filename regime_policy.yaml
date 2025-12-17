@@ -1,0 +1,111 @@
+# ============================================================
+# REGIME POLICY: Strategie ↔ Marktlage Allowlist
+# ============================================================
+
+# Hier definierst du, welche Strategien in welchen Regimen laufen dürfen
+
+strategies:
+  mean_reversion_zscore:
+    name: "Mean Reversion Z-Score"
+
+    # Welche Regimes sind OK?
+    allowed_regimes:
+      Range:
+        confidence: 0.95
+        position_size: 1.0     # 100% normal size
+        max_leverage: 1.0
+
+      Low_Volatility:
+        confidence: 0.95
+        position_size: 1.0
+        max_leverage: 1.0
+
+      Bull:
+        confidence: 0.70
+        position_size: 0.5     # Nur 50% der Größe
+        max_leverage: 1.0
+
+      Bear:
+        confidence: 0.70
+        position_size: 0.5
+        max_leverage: 1.0
+
+    # Welche Regimes sind VERBOTEN?
+    forbidden_regimes:
+      High_Volatility:
+        reason: "Z-Score unreliable, spreads widen"
+        status: "CONDITIONAL_PASS"   # Nur Demo/Paper
+
+      Crash:
+        reason: "Stop losses triggered, slippage killer"
+        status: "FAIL_FAST"          # Nicht laufen!
+
+      Spike:
+        reason: "Gap up/down, can't execute orders"
+        status: "FAIL_FAST"
+
+  trend_follower:
+    name: "Trend Following Strategy"
+
+    allowed_regimes:
+      Bull:
+        confidence: 0.95
+        position_size: 1.0
+        max_leverage: 2.0
+
+      Bear:
+        confidence: 0.95
+        position_size: 1.0
+        max_leverage: 2.0
+
+      Breakout:
+        confidence: 0.85
+        position_size: 0.8
+        max_leverage: 1.5
+
+    forbidden_regimes:
+      Range:
+        reason: "Choppy, whipsaws, loss of trending signal"
+        status: "CONDITIONAL_PASS"
+
+      High_Volatility:
+        reason: "False breakouts from vol spikes"
+        status: "CONDITIONAL_PASS"
+
+  range_breakout:
+    name: "Range Breakout Strategy"
+
+    # Für deine Strategie: stark in Breakout-/Trend-Regimen, vorsichtig in Range
+    allowed_regimes:
+      Breakout:
+        confidence: 0.95
+        position_size: 1.0
+        max_leverage: 1.5
+
+      Bull:
+        confidence: 0.85
+        position_size: 0.8
+        max_leverage: 1.5
+
+      Bear:
+        confidence: 0.85
+        position_size: 0.8
+        max_leverage: 1.5
+
+      High_Volatility:
+        confidence: 0.70
+        position_size: 0.5
+        max_leverage: 1.0
+
+    forbidden_regimes:
+      Range:
+        reason: "Zu viele Fake-Breakouts in klaren Ranges"
+        status: "CONDITIONAL_PASS"   # Evtl. nur Demo / sehr kleine Size
+
+      Crash:
+        reason: "Extremes Slippage, unzuverlässige Breakout-Level"
+        status: "FAIL_FAST"
+
+      Spike:
+        reason: "Einmalige Spikes triggern Stops und Entries zufällig"
+        status: "FAIL_FAST"
