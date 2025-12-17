@@ -36,5 +36,14 @@ COST SCENARIOS:
    Max Drawdown: 1.93%
    Profit Factor: 1.72
 
+KELLY SIZING (empirisch):
+ win_rate: 51.13%
+ avg_win: 465.90
+ avg_loss: 283.03
+ payoff_ratio: 1.65
+ kelly_full: 21.44%
+ kelly_half: 10.72%
+ kelly_quarter: 5.36%
+
 DECISION: LIVE_ELIGIBLE
 Reason: All validation criteria passed ✅

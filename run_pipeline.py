@@ -20,9 +20,12 @@ import numpy as np
 
 from mt5_integration.trades_loader import MT5TradesLoader
 from backtest.metrics import calculate_metrics
-from validation.cost_scenarios import run_cost_scenarios
+
 from validation.gates import DecisionGate
 from validation.monte_carlo import run_monte_carlo_on_trades
+from validation.cost_scenarios import run_cost_scenarios
+from validation.kelly import estimate_kelly_from_trades
+
 from utils.logger import get_logger
 from utils.config import load_config
 
@@ -99,7 +102,15 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml") -> None
 
     logger.info("✅ Cost scenarios finished")
 
-    # === SCHRITT 6: Monte-Carlo auf Trades ===
+    # === SCHRITT 6: Kelly-basiertes Sizing ===
+    logger.info("\n[STEP 6] Estimating Kelly sizing...")
+
+    kelly_info = estimate_kelly_from_trades(trades_df)
+
+    logger.info("✅ Kelly estimation finished")
+
+
+    # === SCHRITT 7: Monte-Carlo auf Trades ===
     logger.info("\n[STEP 5] Running Monte Carlo on trade sequence...")
 
     mc_results = run_monte_carlo_on_trades(
@@ -174,7 +185,7 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml") -> None
 
     logger.info("✅ Monte Carlo return plot saved to %s", mc_plot_path)
 
-    # === SCHRITT 7: Decision Gate ===
+    # === SCHRITT 8: Decision Gate ===
     logger.info("\n[STEP 6] Running Decision Gate...")
     gate = DecisionGate(config_path)
 
@@ -199,7 +210,7 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml") -> None
 
     logger.info("%s\n", "=" * 60)
 
-    # === SCHRITT 8: Report speichern ===
+    # === SCHRITT 9: Report speichern ===
     logger.info("[STEP 7] Saving report...")
     reports_dir.mkdir(exist_ok=True)
     report_path = reports_dir / f"{Path(trades_csv_path).stem}_report.txt"
@@ -235,6 +246,15 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml") -> None
             f.write(f"   Max Drawdown: {m['max_drawdown']:.2%}\n")
             f.write(f"   Profit Factor: {m['profit_factor']:.2f}\n")
         f.write("\n")
+
+        f.write("KELLY SIZING (empirisch):\n")
+        f.write(f" win_rate: {kelly_info['win_rate']:.2%}\n")
+        f.write(f" avg_win: {kelly_info['avg_win']:.2f}\n")
+        f.write(f" avg_loss: {kelly_info['avg_loss']:.2f}\n")
+        f.write(f" payoff_ratio: {kelly_info['payoff_ratio']:.2f}\n")
+        f.write(f" kelly_full: {kelly_info['kelly_full']:.2%}\n")
+        f.write(f" kelly_half: {kelly_info['kelly_half']:.2%}\n")
+        f.write(f" kelly_quarter: {kelly_info['kelly_quarter']:.2%}\n\n")
 
         f.write(f"DECISION: {result.status.value}\n")
         f.write(f"Reason: {result.reason}\n")
