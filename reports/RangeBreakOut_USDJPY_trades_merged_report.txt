@@ -5,19 +5,19 @@ Strategy: RangeBreakOut_USDJPY_trades_merged
 Date Range: 2024-02-01 07:00:00 to 2025-04-25 21:20:00
 
 METRICS:
- Total Trades: 355
- Total Return: 396.10%
- Sharpe Ratio: 2.96
- Max Drawdown: 38.32%
- Win Rate: 50.42%
+ Total Trades: 354
+ Total Return: 35.36%
+ Sharpe Ratio: 2.79
+ Max Drawdown: 3.86%
+ Win Rate: 51.13%
 
 MONTE CARLO:
  mc_positive_prob: 100.00%
- mc_median_return: 394.89%
- mc_p5_return: 220.64%
- mc_p95_return: 586.15%
- mc_median_max_dd: 37.04%
- mc_p95_max_dd: 63.64%
+ mc_median_return: 35.22%
+ mc_p5_return: 18.32%
+ mc_p95_return: 53.21%
+ mc_median_max_dd: 3.86%
+ mc_p95_max_dd: 6.65%
 
-DECISION: CONDITIONAL_PASS
-Reason: One criterion violated: Max Drawdown 38.3% > 25.0%
+DECISION: LIVE_ELIGIBLE
+Reason: All validation criteria passed ✅

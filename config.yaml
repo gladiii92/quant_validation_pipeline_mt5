@@ -45,8 +45,8 @@ data:
 # ============================================================
 
 backtest:
-  initial_capital: 10000 # USD
-  max_position_size: 0.02 # 2% pro Trade
+  initial_capital: 100_000 # USD
+  max_position_size: 0.01 # 1% pro Trade
   # Gebühren & Slippage (realistisch!)
   costs:
   spread_pips: 1.5 # IC Markets typisch
