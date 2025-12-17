@@ -2,8 +2,8 @@
 MT5 Trades Loader für die aus RangeBreakOut_USDJPY.xlsx erzeugte merged-CSV.
 
 - Liest die merged CSV (Orders + Trades)
-- Bildet aus in/out-Zeilen pro Symbol & Richtung eine Positionsliste
-- Gibt ein standardisiertes DataFrame zurück
+- Nutzt den MT5-Trades-Block (Spalte 'Trade') als Trade-ID
+- Baut pro Trade-ID eine abgeschlossene Position (Entry/Exit)
 """
 
 import sys
@@ -21,7 +21,7 @@ logger = get_logger(__name__)
 
 
 class MT5TradesLoader:
-    """Lädt Trades aus der von mt5_xml_to_csv_converter erzeugten CSV."""
+    """Lädt abgeschlossene Trades aus der merged MT5 CSV."""
 
     def __init__(self):
         """Initialisiert den Loader."""
@@ -29,7 +29,7 @@ class MT5TradesLoader:
 
     def load_trades(self, csv_path: str) -> pd.DataFrame:
         """
-        Lädt Trades aus der merged MT5 CSV und baut abgeschlossene Positionen.
+        Lädt Trades aus der merged MT5 CSV.
 
         Erwartete Spalten in der CSV:
 
@@ -50,18 +50,18 @@ class MT5TradesLoader:
         - Kommentar_order
 
         Returns:
-            DataFrame mit Spalten (positionsbasiert):
+            DataFrame mit Spalten (pro MT5-Trade-ID):
 
-            - ticket (int): Laufende Positions-ID (nicht MT5-Trade-ID)
-            - entry_time (datetime): Einstiegszeit
-            - exit_time (datetime): Ausstiegszeit
+            - ticket (int): MT5 Trade ID
+            - entry_time (datetime): erste 'in'-Zeit (Fallback: erste Zeile)
+            - exit_time (datetime): letzte 'out'-Zeit (Fallback: letzte Zeile)
             - symbol (str)
-            - direction (int): 1 = long, -1 = short
-            - volume (float)
-            - entry_price (float)
-            - exit_price (float)
-            - pnl (float)
-            - commission (float, aktuell 0)
+            - direction (int): 1 = long (buy), -1 = short (sell)
+            - volume (float): Volumen der 'out'-Zeile (MT5-Tradegröße)
+            - entry_price (float): Preis der ersten 'in'-Zeile
+            - exit_price (float): Preis der letzten 'out'-Zeile
+            - pnl (float): Gewinn (aus 'out'-Zeile)
+            - commission (float): aktuell 0 (MT5-Kommission steckt separat)
         """
         path = Path(csv_path)
         if not path.exists():
@@ -72,11 +72,7 @@ class MT5TradesLoader:
         # Deine CSV ist mit ; getrennt
         df = pd.read_csv(path, sep=";")
 
-        # Balance-Zeilen entfernen (Trade=1, Symbol leer/balance)
-        if "Symbol_trade" in df.columns:
-            df = df[~((df["Trade"] == 1) & df["Symbol_trade"].isna())]
-
-        # Pflichtspalten prüfen – ohne 'Zeit'
+        # Pflichtspalten prüfen
         required_cols = [
             "Trade",
             "Symbol_trade",
@@ -91,117 +87,94 @@ class MT5TradesLoader:
         if missing:
             raise ValueError(f"Missing required columns in CSV: {missing}")
 
-        # Zeitspalte: Eröffnungszeit in datetime
+        # Zeitspalte in datetime
         df["Eröffnungszeit"] = pd.to_datetime(df["Eröffnungszeit"])
 
-        # Nach Eröffnungszeit sortieren, damit wir Entries/Exits in chronologischer Reihenfolge sehen
-        df = df.sort_values("Eröffnungszeit").reset_index(drop=True)
+        # Balance/sonstige Zeilen mit leerem Symbol rausfiltern
+        df = df[~df["Symbol_trade"].isna()].copy()
 
-        positions: List[Dict[str, Any]] = []
-        open_positions: List[Dict[str, Any]] = []
-        next_ticket = 1
+        # Nach Trade-ID und Zeit sortieren
+        df = df.sort_values(["Trade", "Eröffnungszeit"]).reset_index(drop=True)
 
-        # Hilfsfunktion: long/short aus Typ_trade bestimmen
-        def side_from_type(typ: str) -> int:
-            typ = str(typ).lower()
+        trades: List[Dict[str, Any]] = []
+
+        # Gruppierung nach MT5-Trade-ID
+        for trade_id, group in df.groupby("Trade"):
+            group = group.sort_values("Eröffnungszeit")
+
+            symbol = str(group["Symbol_trade"].iloc[0]).strip()
+
+            # Richtung des Trades aus Typ_trade:
+            # MT5: buy/sell pro Leg; wir nehmen die erste 'in'-Zeile als Referenz
+            entry_rows = group[group["Richtung"].str.lower() == "in"]
+            exit_rows = group[group["Richtung"].str.lower() == "out"]
+
+            if not entry_rows.empty:
+                entry_row = entry_rows.iloc[0]
+            else:
+                # Fallback: erste Zeile der Gruppe
+                entry_row = group.iloc[0]
+
+            if not exit_rows.empty:
+                exit_row = exit_rows.iloc[-1]
+            else:
+                # Wenn kein 'out' vorhanden ist, ignorieren wir den Trade
+                logger.warning(
+                    "Trade %s has no 'out' row; skipping (symbol=%s)", trade_id, symbol
+                )
+                continue
+
+            # Zeiten
+            entry_time = entry_row["Eröffnungszeit"]
+            exit_time = exit_row["Eröffnungszeit"]
+
+            # Preise
+            entry_price = float(entry_row["Preis_trade"])
+            exit_price = float(exit_row["Preis_trade"])
+
+            # Volumen: aus der 'out'-Zeile (MT5 zeigt dort Tradegröße)
+            volume = float(exit_row["Volumen_trade"])
+
+            # PnL: Gewinn aus der 'out'-Zeile
+            pnl_raw = exit_row["Gewinn"]
+            pnl = float(pnl_raw) if not pd.isna(pnl_raw) else 0.0
+
+            # Richtung: buy = long, sell = short, aus Entry-Zeile
+            typ = str(entry_row["Typ_trade"]).strip().lower()
             if typ == "buy":
-                return 1
+                direction = 1
             elif typ == "sell":
-                return -1
+                direction = -1
             else:
-                return 0
+                direction = 0
 
-        for _, row in df.iterrows():
-            richtung = str(row["Richtung"]).strip().lower()
-            typ_trade = str(row["Typ_trade"]).strip().lower()
-            symbol = str(row["Symbol_trade"]).strip()
+            trades.append(
+                {
+                    "ticket": int(trade_id),
+                    "entry_time": entry_time,
+                    "exit_time": exit_time,
+                    "symbol": symbol,
+                    "direction": direction,
+                    "volume": volume,
+                    "entry_price": entry_price,
+                    "exit_price": exit_price,
+                    "pnl": pnl,
+                    "commission": 0.0,  # Optional: später aus separaten MT5-Kommissionsdaten
+                }
+            )
 
-            # Manche Zeilen sind leer / nur Balance etc.
-            if symbol == "" or symbol.lower() == "balance":
-                continue
-
-            vol = float(row["Volumen_trade"])
-            price = float(row["Preis_trade"])
-            time = row["Eröffnungszeit"]
-            pnl = float(row["Gewinn"]) if not pd.isna(row["Gewinn"]) else 0.0
-
-            side = side_from_type(typ_trade)
-            if side == 0:
-                # Unbekannter Typ, überspringen
-                continue
-
-            if richtung == "in":
-                # Neue offene Position anlegen
-                open_positions.append(
-                    {
-                        "symbol": symbol,
-                        "side": side,
-                        "volume": vol,
-                        "entry_time": time,
-                        "entry_price": price,
-                        "mt5_trade_id": int(row["Trade"]),
-                    }
-                )
-            elif richtung == "out":
-                # Passende offene Position suchen:
-                # gleiche Richtung (side), gleiches Symbol, Volumen-Toleranz
-                match_index = None
-                for i in range(len(open_positions) - 1, -1, -1):
-                    pos = open_positions[i]
-                    if (
-                        pos["symbol"] == symbol
-                        and pos["side"] == side
-                        and abs(pos["volume"] - vol) < 1e-6
-                    ):
-                        match_index = i
-                        break
-
-                if match_index is None:
-                    # Kein passender Entry gefunden -> Warnung, aber nicht crashen
-                    logger.warning(
-                        "No matching open position for exit: Trade=%s Symbol=%s side=%s vol=%s time=%s",
-                        row["Trade"],
-                        symbol,
-                        side,
-                        vol,
-                        time,
-                    )
-                    continue
-
-                entry_pos = open_positions.pop(match_index)
-
-                positions.append(
-                    {
-                        "ticket": next_ticket,
-                        "entry_time": entry_pos["entry_time"],
-                        "exit_time": time,
-                        "symbol": symbol,
-                        "direction": side,
-                        "volume": vol,
-                        "entry_price": entry_pos["entry_price"],
-                        "exit_price": price,
-                        "pnl": pnl,
-                        "commission": 0.0,  # kannst du später aus Kommission-Spalte ziehen
-                        "mt5_entry_trade_id": entry_pos["mt5_trade_id"],
-                        "mt5_exit_trade_id": int(row["Trade"]),
-                    }
-                )
-                next_ticket += 1
-            else:
-                # unbekannte Richtung -> ignorieren
-                continue
-
-        result = pd.DataFrame(positions)
+        result = pd.DataFrame(trades)
 
         if result.empty:
-            logger.warning("No closed positions could be constructed from CSV")
+            logger.warning("No trades could be constructed from CSV")
         else:
-            logger.info("Constructed %d closed positions", len(result))
+            logger.info("Constructed %d trades (per MT5 Trade-ID)", len(result))
             logger.info(
                 "Date range: %s to %s",
                 result["entry_time"].min(),
                 result["exit_time"].max(),
             )
+            logger.info("Total PnL from MT5 trades: %.2f", result["pnl"].sum())
 
         return result
 
@@ -253,18 +226,17 @@ class MT5TradesLoader:
 if __name__ == "__main__":
     loader = MT5TradesLoader()
 
-    # Testlauf mit deiner Datei (Pfad ggf. anpassen)
     csv_path = r"G:\DAVID\Desktop\GitHub\quant_validation_pipeline_mt5\data\processed\RangeBreakOut_USDJPY_trades_merged.csv"
 
     trades_df = loader.load_trades(csv_path)
     validation = loader.validate_trades(trades_df)
 
-    from pathlib import Path
+    from pathlib import Path as _Path
 
     storage_path = (
-        r"G:\DAVID\Desktop\GitHub\quant_validation_pipeline_mt5\storage\trades.parquet"
+        r"G:\DAVID\Desktop\GitHub\quant_validation_pipeline_mt5\storage\trades_mt5.parquet"
     )
-    Path(storage_path).parent.mkdir(parents=True, exist_ok=True)
+    _Path(storage_path).parent.mkdir(parents=True, exist_ok=True)
     trades_df.to_parquet(storage_path)
 
     print(validation)
