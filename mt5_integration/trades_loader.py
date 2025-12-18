@@ -1,5 +1,5 @@
 """
-MT5 Trades Loader für die aus RangeBreakOut_USDJPY.xlsx erzeugte merged-CSV.
+MT5 Trades Loader für die aus RangeBreakoutUSDJPY.xlsx erzeugte merged-CSV.
 
 - Liest die merged CSV (Orders + Trades)
 - Nutzt den MT5-Trades-Block (Spalte 'Trade') als Trade-ID
@@ -15,7 +15,7 @@ import pandas as pd
 # Ordner eine Ebene nach oben zum Modulpfad hinzufügen
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
-from utils.logger import get_logger
+from utils.logger import get_logger  # noqa: E402
 
 logger = get_logger(__name__)
 
@@ -67,10 +67,12 @@ class MT5TradesLoader:
         if not path.exists():
             raise FileNotFoundError(f"Trades file not found: {csv_path}")
 
-        logger.info(f"Loading merged MT5 trades from {csv_path}...")
+        logger.info("Loading merged MT5 trades from %s...", csv_path)
 
-        # Deine CSV ist mit ; getrennt
-        df = pd.read_csv(path, sep=";")
+        # Deine neue CSV ist mit Komma getrennt
+        df = pd.read_csv(path, sep=",")
+
+        logger.info("Columns in CSV: %s", list(df.columns))
 
         # Pflichtspalten prüfen
         required_cols = [
@@ -90,7 +92,7 @@ class MT5TradesLoader:
         # Zeitspalte in datetime
         df["Eröffnungszeit"] = pd.to_datetime(df["Eröffnungszeit"])
 
-        # Balance/sonstige Zeilen mit leerem Symbol rausfiltern
+        # Balances/sonstige Zeilen mit leerem Symbol rausfiltern
         df = df[~df["Symbol_trade"].isna()].copy()
 
         # Nach Trade-ID und Zeit sortieren
@@ -101,11 +103,9 @@ class MT5TradesLoader:
         # Gruppierung nach MT5-Trade-ID
         for trade_id, group in df.groupby("Trade"):
             group = group.sort_values("Eröffnungszeit")
-
             symbol = str(group["Symbol_trade"].iloc[0]).strip()
 
-            # Richtung des Trades aus Typ_trade:
-            # MT5: buy/sell pro Leg; wir nehmen die erste 'in'-Zeile als Referenz
+            # Entry-/Exit-Zeilen bestimmen
             entry_rows = group[group["Richtung"].str.lower() == "in"]
             exit_rows = group[group["Richtung"].str.lower() == "out"]
 
@@ -159,7 +159,7 @@ class MT5TradesLoader:
                     "entry_price": entry_price,
                     "exit_price": exit_price,
                     "pnl": pnl,
-                    "commission": 0.0,  # Optional: später aus separaten MT5-Kommissionsdaten
+                    "commission": 0.0,
                 }
             )
 
@@ -217,7 +217,7 @@ class MT5TradesLoader:
 
         logger.info("Trade Validation Results:")
         logger.info(" Total Trades: %d", results["total_trades"])
-        logger.info(" Total PnL: $%.2f", results["total_pnl"])
+        logger.info(" Total PnL: %.2f", results["total_pnl"])
         logger.info(" Win Rate: %.2f%%", results["win_rate"] * 100)
 
         return results
@@ -225,17 +225,13 @@ class MT5TradesLoader:
 
 if __name__ == "__main__":
     loader = MT5TradesLoader()
-
-    csv_path = r"G:\DAVID\Desktop\GitHub\quant_validation_pipeline_mt5\data\processed\RangeBreakOut_USDJPY_trades_merged.csv"
-
+    csv_path = r"data\processed\RangeBreakoutUSDJPY__v4_USDJPY_M15_20240101_20250925_trades_merged.csv"
     trades_df = loader.load_trades(csv_path)
     validation = loader.validate_trades(trades_df)
 
     from pathlib import Path as _Path
 
-    storage_path = (
-        r"G:\DAVID\Desktop\GitHub\quant_validation_pipeline_mt5\storage\trades_mt5.parquet"
-    )
+    storage_path = r"storage\trades_mt5.parquet"
     _Path(storage_path).parent.mkdir(parents=True, exist_ok=True)
     trades_df.to_parquet(storage_path)
 

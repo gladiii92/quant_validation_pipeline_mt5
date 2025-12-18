@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
+from mt5_xml_to_csv_converter import batch_convert_raw
 from mt5_integration.trades_loader import MT5TradesLoader
 from backtest.metrics import calculate_metrics
 from validation.gates import DecisionGate, GateStatus
@@ -22,6 +23,21 @@ from vix_loader import load_vix_regimes
 from validation.regime_alignment import analyze_vix_regime_alignment
 from validation.monte_carlo import run_monte_carlo_on_trades
 
+from validation.multi_asset_summary import load_and_score_optimizer
+
+from glob import glob
+
+def find_latest_trades_csv(processed_dir: str = "data/processed") -> str:
+    """Nimmt die neueste *_trades_merged.csv aus processed."""
+    files = sorted(
+        Path(processed_dir).glob("*_trades_merged.csv"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    if not files:
+        raise FileNotFoundError(f"Keine *_trades_merged.csv in {processed_dir} gefunden.")
+    return str(files[0])
+
 logger = get_logger("PIPELINE", log_file="logs/pipeline.log")
 
 
@@ -33,10 +49,14 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml"):
     logger.info("🚀 QUANT VALIDATION PIPELINE STARTED")
     logger.info("=" * 60)
 
+
+
     # === SCHRITT 1: Konfiguration laden ===
     logger.info("\n[STEP 1] Loading configuration...")
     config = load_config(config_path)
     logger.info("✅ Config loaded: %s", config["project"]["name"])
+
+
 
     # === SCHRITT 2: Trades importieren ===
     logger.info("\n[STEP 2] Importing MT5 trades...")
@@ -47,12 +67,39 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml"):
     except FileNotFoundError as e:
         logger.error("❌ %s", e)
         return
+    
 
-    # === SCHRITT 3: Validiere Trades ===
+
+    # STEP 3: Multi-Asset Check (optional)
+    if Path("data/raw/multi_asset_summary.xml").exists():
+        multi_analyzer = MultiAssetSummaryAnalyzer("data/raw/multi_asset_summary.xml")
+        metrics['multi_asset_hit_rate'] = (multi_analyzer.results_df['sharpe'] > 1.0).mean()
+        gate.evaluate({'multi_asset_gate': multi_analyzer.run_meta_gate()})
+
+
+
+    # === SCHRITT 4: Validiere Trades ===
     logger.info("\n[STEP 3] Validating trades...")
     validation = loader.validate_trades(trades_df)
 
-    # === SCHRITT 4: Berechne Metriken ===
+
+
+    # === SCHRITT 5: Multi-Asset-Optimizer ===
+    optimizer_xml = Path("data/raw/multi_asset_optimizer.xml")
+    multi_asset_info = None
+    if optimizer_xml.exists():
+        logger.info("\n[STEP 4b] Evaluating multi-asset optimizer results...")
+        multi_asset_info = load_and_score_optimizer(str(optimizer_xml))
+        logger.info(
+            "Multi-Asset hit-rate: %.1f%% (%d/%d)",
+            multi_asset_info["hit_rate"] * 100,
+            multi_asset_info["n_symbols_pass"],
+            multi_asset_info["n_symbols"],
+        )
+
+
+
+    # === SCHRITT 5: Berechne Metriken ===
     logger.info("\n[STEP 4] Calculating metrics...")
     initial_capital = config["backtest"]["initial_capital"]
 
@@ -70,7 +117,9 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml"):
     logger.info(" Max Drawdown: %.2f%%", metrics["max_drawdown"] * 100)
     logger.info(" Win Rate: %.2f%%", metrics["win_rate"] * 100)
 
-    # === SCHRITT 5: Kosten-/Slippage-Szenarien ===
+
+
+    # === SCHRITT 6: Kosten-/Slippage-Szenarien ===
     logger.info("\n[STEP 5] Running cost/slippage scenarios...")
     cost_scenarios = {
         "base": 1.0,
@@ -82,12 +131,16 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml"):
     )
     logger.info("✅ Cost scenarios finished")
 
-    # === SCHRITT 6: Kelly-basiertes Sizing ===
+
+
+    # === SCHRITT 7: Kelly-basiertes Sizing ===
     logger.info("\n[STEP 6] Estimating Kelly sizing...")
     kelly_info = estimate_kelly_from_trades(trades_df)
     logger.info("✅ Kelly estimation finished")
 
-    # === SCHRITT 7: VIX-Regime-Ausrichtung ===
+
+
+    # === SCHRITT 8: VIX-Regime-Ausrichtung ===
     logger.info("\n[STEP 7] Loading VIX regimes and checking alignment...")
     vix_regimes = load_vix_regimes(
         cache_path="data/external/vix_daily.csv",
@@ -102,7 +155,9 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml"):
     )
     logger.info("✅ VIX regime alignment finished")
 
-    # === SCHRITT 8: Monte Carlo ===
+
+
+    # === SCHRITT 9: Monte Carlo ===
     logger.info("\n[STEP 8] Running Monte Carlo on trade sequence...")
     mc_results = run_monte_carlo_on_trades(
         trades_df=trades_df,
@@ -134,7 +189,9 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml"):
         plt.close()
     logger.info("✅ Monte Carlo return plot saved to %s", mc_plot_path)
 
-    # === SCHRITT 9: Equity-Curve-Plot ===
+
+
+    # === SCHRITT 10: Equity-Curve-Plot ===
     logger.info("[PLOT] Saving equity curve...")
     eq = trades_df["pnl"].cumsum() + initial_capital
     plt.figure(figsize=(8, 4))
@@ -147,7 +204,9 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml"):
     plt.close()
     logger.info("✅ Equity curve saved to %s", eq_path)
 
-    # === SCHRITT 10: VIX-Regime-Sharpe-Plot ===
+
+
+    # === SCHRITT 11: VIX-Regime-Sharpe-Plot ===
     logger.info("[PLOT] Saving VIX regime Sharpe barplot...")
     vix_stats = vix_alignment["regime_stats"]
     names = list(vix_stats.keys())
@@ -164,7 +223,9 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml"):
     plt.close()
     logger.info("✅ VIX regime Sharpe plot saved to %s", vix_plot_path)
 
-    # === SCHRITT 11: Decision Gate ===
+
+
+    # === SCHRITT 12: Decision Gate ===
     logger.info("\n[STEP 11] Running Decision Gate...")
     gate = DecisionGate(config_path)
     gate_metrics = {
@@ -173,6 +234,10 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml"):
         "mc_positive_prob": mc_results.get("mc_positive_prob", 0.0),
         "mt5_correlation": 0.9,
     }
+
+    if multi_asset_info is not None:
+        gate_metrics["multi_asset_hit_rate"] = multi_asset_info["hit_rate"]
+
     result = gate.evaluate(gate_metrics)
 
     logger.info("\n" + "=" * 60)
@@ -184,6 +249,8 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml"):
         for criterion in result.violated_criteria:
             logger.warning(" ❌ %s", criterion)
     logger.info("=" * 60 + "\n")
+
+
 
     # === Summary-JSON ===
     summary = {
@@ -310,14 +377,13 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml"):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Quant Validation Pipeline"
-    )
+    parser = argparse.ArgumentParser(description="Quant Validation Pipeline")
     parser.add_argument(
         "--trades-file",
         type=str,
-        required=True,
-        help="Path to MT5 trades CSV file",
+        required=False,
+        help="Path to MT5 trades CSV file "
+             "(wenn leer → auto: MT5-raw konvertieren + neueste *_trades_merged.csv nutzen)",
     )
     parser.add_argument(
         "--config",
@@ -327,4 +393,19 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    run_pipeline(args.trades_file, config_path=args.config)
+    # AUTO-MODE: keine trades-file angegeben → erst versuchen, fertige CSV zu finden
+    if args.trades_file:
+        trades_path = args.trades_file
+    else:
+        processed_dir = "data/processed"
+        raw_dir = "data/raw"
+
+        try:
+            trades_path = find_latest_trades_csv(processed_dir)
+        except FileNotFoundError:
+            # Keine CSV vorhanden → MT5-raw → CSV konvertieren
+            logger.info("No *_trades_merged.csv found, running MT5 converter on raw files...")
+            batch_convert_raw(raw_dir=raw_dir, base_output_dir=processed_dir, overwrite=False)
+            trades_path = find_latest_trades_csv(processed_dir)
+
+    run_pipeline(trades_path, config_path=args.config)
