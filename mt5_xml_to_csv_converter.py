@@ -61,9 +61,18 @@ def extract_header_info(xlsx_path: str) -> Dict[str, Any]:
     strategy_clean = strategy_clean.replace(" ", "_")
     strategy_clean = strategy_clean.replace("-", "_")
 
+    # NEU: generischer Strategie-Key, z.B. RangeBreakoutUSDJPY_v4
+    # dazu nur den Teil vor Symbol/Timeframe nehmen
+    # Angenommen Titel: "RangeBreakoutUSDJPY -v4 USDJPY,M15 2024.01.01-2025.09.25"
+    # extract_header_info kennt den Titel nicht direkt, aber strategy_name_raw reicht meist
+    strategy_key = strategy_clean
+    # doppelte Unterstriche zu einfachen
+    strategy_key = strategy_key.replace("__", "_")
+
     return {
         "strategy_name_raw": strategy_name,
         "strategy_name": strategy_clean,
+        "strategy_key": strategy_key,  # NEU
         "symbol": symbol,
         "timeframe": timeframe,
         "date_from": date_from,

@@ -22,7 +22,7 @@ from vix_loader import load_vix_regimes
 from validation.regime_alignment import analyze_vix_regime_alignment
 from validation.monte_carlo import run_monte_carlo_on_trades
 from validation.walk_forward import run_walk_forward_analysis
-from validation.multi_asset_summary import load_and_score_optimizer
+from validation.multi_asset_summary import load_and_score_optimizer, extract_strategy_name_from_optimizer
 
 
 logger = get_logger("PIPELINE", log_file="logs/pipeline.log")
@@ -81,21 +81,57 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml") -> None
     )
     multi_asset_info = None
     if optimizer_candidates:
-        optimizer_xml = optimizer_candidates[0]
-        logger.info(
-            "\n[STEP 4b] Evaluating multi-asset optimizer results from %s...",
-            optimizer_xml,
-        )
-        multi_asset_info = load_and_score_optimizer(
-            str(optimizer_xml), sharpe_threshold=1.0
-        )
-        logger.info(
-            "Multi-Asset hit-rate: %.1f%% (%d/%d, Sharpe > %.2f)",
-            multi_asset_info["hit_rate"] * 100,
-            multi_asset_info["n_symbols_pass"],
-            multi_asset_info["n_symbols"],
-            multi_asset_info["sharpe_threshold"],
-        )
+        # Strategy-Namen, wie er aus dem XLSX-Konverter kommt (z.B. RangeBreakoutUSDJPY__v4_USDJPY_M15_...)
+        # Wir extrahieren einen "normalisierten" Strategy-Key, z.B. RangeBreakoutUSDJPY_v4
+        # aus dem CSV-Stem, indem wir Symbol/Timeframe/Daten abschneiden.
+        # Dafür verwenden wir eine einfache Heuristik: alles bis zum zweiten "__".
+        # Beispiel: RangeBreakoutUSDJPY__v4_USDJPY_M15_... -> RangeBreakoutUSDJPY__v4 -> dann "__" -> "_".
+        csv_base = metrics_strategy_name
+        # bis zum dritten "_": Name__v4_USDJPY... → Name__v4
+        parts = csv_base.split("_")
+        if len(parts) >= 3:
+            # Name, leer, v4, ...
+            strategy_key_from_csv = "_".join(parts[:3])
+        else:
+            strategy_key_from_csv = csv_base
+        # doppelte Unterstriche zu einfachen
+        strategy_key_from_csv = strategy_key_from_csv.replace("__", "_")
+
+        logger.info("Strategy key (from CSV): %s", strategy_key_from_csv)
+
+        matched_xml = None
+        for opt_path in optimizer_candidates:
+            opt_strategy = extract_strategy_name_from_optimizer(str(opt_path))
+            logger.info(
+                "Found optimizer XML %s with strategy name %s",
+                opt_path.name,
+                opt_strategy,
+            )
+            # einfacher Match: Strategy-Key muss im Optimizer-Strategy-Name vorkommen
+            if strategy_key_from_csv in opt_strategy:
+                matched_xml = opt_path
+                break
+
+        if matched_xml is not None:
+            logger.info(
+                "\n[STEP 4b] Evaluating multi-asset optimizer results from %s...",
+                matched_xml,
+            )
+            multi_asset_info = load_and_score_optimizer(
+                str(matched_xml), sharpe_threshold=1.0
+            )
+            logger.info(
+                "Multi-Asset hit-rate: %.1f%% (%d/%d, Sharpe > %.2f)",
+                multi_asset_info["hit_rate"] * 100,
+                multi_asset_info["n_symbols_pass"],
+                multi_asset_info["n_symbols"],
+                multi_asset_info["sharpe_threshold"],
+            )
+        else:
+            logger.info(
+                "[STEP 4b] No matching optimizer XML found for strategy %s",
+                strategy_key_from_csv,
+            )
 
     # === SCHRITT 4: Berechne Metriken (Full Sample) ===
     logger.info("\n[STEP 4] Calculating metrics...")

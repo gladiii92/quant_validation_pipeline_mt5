@@ -3,7 +3,54 @@
 from pathlib import Path
 import xml.etree.ElementTree as ET
 from typing import Dict, Any
+import re
+
 import pandas as pd
+
+def extract_strategy_name_from_optimizer(xml_path: str) -> str:
+    """
+    Liest den <Title>-Tag der MT5-Optimizer-XML und extrahiert den Strategienamen.
+
+    Beispiel-Titel:
+    "RangeBreakoutUSDJPY -v4 USDJPY,M15 2024.01.01-2025.09.25"
+
+    Rückgabe:
+        "RangeBreakoutUSDJPY_v4" (normalisiert: Spaces/Minus -> Unterstrich)
+    """
+    path = Path(xml_path)
+    tree = ET.parse(path)
+    root = tree.getroot()
+
+    # Namespace für Office/Excel-XML
+    ns_office = {"o": "urn:schemas-microsoft-com:office:office"}
+
+    # <DocumentProperties><Title>...</Title>
+    title_elem = root.find(".//o:DocumentProperties/o:Title", ns_office)
+    if title_elem is None or not title_elem.text:
+        # Fallback: Dateiname ohne Suffix
+        return path.stem
+
+    title = title_elem.text.strip()
+
+    # Heuristik: alles bis zum Symbol/Timeframe-Teil, z.B. "RangeBreakoutUSDJPY -v4"
+    # Trenne am ersten Symbol/Periode-Block (z. B. " USDJPY," oder " EURUSD,")
+    # Einfacher: nimm den Teil bis zum ersten " <SYMBOL>," oder " <SYMBOL> ".
+    # Robustere Variante: nur den ersten Block vor dem ersten Symbol-Trenner.
+    # Für deine Zwecke reicht: bis zum ersten " USDJPY" / Komma / Zeitangabe.
+    # Wir nehmen den Teil bis zum ersten " USD" / " EUR" / " GBP" / " JPY" etc. wäre zu kompliziert;
+    # hier einfacher: der Strategiename steht vor dem ersten Symbol-Token, also trennen an " -vX".
+    # Du hast meist "Name -v4 ..." → wir extrahieren den Prefix inklusive v-Teil.
+    m = re.match(r"(.+?)(\s+[-–]v\d+)?\s", title)
+    if m:
+        base = m.group(1)
+        suffix = m.group(2) or ""
+        strategy_raw = (base + suffix).strip()
+    else:
+        strategy_raw = title
+
+    # Normalisieren: Spaces und Minus zu Unterstrich
+    strategy_clean = strategy_raw.replace(" ", "_").replace("-", "_")
+    return strategy_clean
 
 
 def parse_mt5_optimizer_xml(xml_path: str) -> pd.DataFrame:
