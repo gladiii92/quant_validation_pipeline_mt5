@@ -25,6 +25,8 @@ from validation.monte_carlo import run_monte_carlo_on_trades
 from validation.walk_forward import run_walk_forward_analysis
 from validation.multi_asset_summary import load_and_score_optimizer, extract_strategy_name_from_optimizer
 
+from generate_html_report import render_html_for_strategy_dir
+
 
 logger = get_logger("PIPELINE", log_file="logs/pipeline.log")
 
@@ -540,6 +542,13 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml") -> None
     logger.info("\n" + "=" * 60)
     logger.info("🎉 PIPELINE COMPLETED")
     logger.info("=" * 60)
+
+    # HTML-Dashboard automatisch erzeugen
+    try:
+        html_path = render_html_for_strategy_dir(strategy_reports_dir)
+        logger.info("✅ HTML report saved to %s", html_path)
+    except Exception as e:
+        logger.error("HTML report generation failed: %s", e)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Quant Validation Report – RangeBreakoutUSDJPY__v4_trades_merged</title>
+<link
+  rel="stylesheet"
+  href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"
+/>
+<style>
+body { padding: 20px; }
+h1, h2, h3 { margin-top: 1.5rem; }
+.table-sm td, .table-sm th { padding: .3rem; }
+img.plot { max-width: 100%; height: auto; border: 1px solid #ccc; margin-bottom: 10px; }
+.explainer { font-size: 0.95rem; }
+.badge-metric { font-size: 1rem; }
+</style>
+</head>
+<body>
+<div class="container-fluid">
+  <h1>Quant Validation Report – RangeBreakoutUSDJPY__v4_trades_merged</h1>
+  <p><strong>Zeitraum:</strong> 2024-02-01 07:00:00 – 2025-04-25 21:20:00</p>
+
+  <h2>Live-Tauglichkeit (Decision Gate)</h2>
+  <div class="row">
+    <div class="col-md-6">
+      <table class="dataframe table table-sm table-striped table-bordered">
+  <thead>
+    <tr style="text-align: right;">
+      <th>Status</th>
+      <th>Confidence</th>
+      <th>Reason</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>LIVE_ELIGIBLE</td>
+      <td>90.00%</td>
+      <td>All validation criteria passed ✅</td>
+    </tr>
+  </tbody>
+</table>
+    </div>
+    <div class="col-md-6 explainer">
+      <p><strong>Interpretation:</strong> Das Decision Gate fasst mehrere Kennzahlen
+      zu einer einfachen Ja/Nein-Entscheidung für den Live-Handel zusammen
+      (z.&nbsp;B. minimale Sharpe im Backtest, maximale zulässige Drawdowns,
+      Monte-Carlo-Robustheit, Korrelation zu MT5-Backtest).</p>
+      <p><strong>Live-Eignung:</strong> Ja, alle definierten Validierungskriterien wurden erfüllt.</p>
+    </div>
+  </div>
+
+  <h2>1. Gesamt-Performance und Kennzahlen</h2>
+  <div class="row">
+    <div class="col-md-6">
+      <h3>Equity-Kurve</h3>
+      <img src="equity.png" alt="Equity Curve" class="plot" />
+    </div>
+    <div class="col-md-6 explainer">
+      <table class="dataframe table table-sm table-striped table-bordered">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>Total Return</th>
+      <th>Sharpe</th>
+      <th>MaxDD</th>
+      <th>WinRate</th>
+      <th>Trades</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>Gesamt</th>
+      <td>35.36%</td>
+      <td>2.79</td>
+      <td>3.86%</td>
+      <td>51.13%</td>
+      <td>354</td>
+    </tr>
+  </tbody>
+</table>
+      <p><strong>Sharpe-Ratio:</strong> 2.79 – sehr gut (professioneller Bereich, meist live nutzbar)</p>
+      <p><strong>Maximaler Drawdown:</strong> 3.86% – sehr geringe Drawdowns (psychologisch gut handelbar)</p>
+      <p>Die Equity-Kurve zeigt den Verlauf des Kontostands über alle Trades. Eine
+      stetig steigende Kurve mit kleinen Rücksetzern ist ideal. Große Einbrüche
+      (Drawdowns) sind psychologisch schwer zu handeln und erhöhen das Risiko,
+      dass man die Strategie in der schlechtesten Phase abschaltet.</p>
+    </div>
+  </div>
+
+  <h2>2. Kosten- und Slippage-Robustheit</h2>
+  <div class="row">
+    <div class="col-md-7">
+      <table class="dataframe table table-sm table-striped table-bordered">
+  <thead>
+    <tr style="text-align: right;">
+      <th>Szenario</th>
+      <th>Total Return</th>
+      <th>Sharpe</th>
+      <th>MaxDD</th>
+      <th>Profit Factor</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>base</td>
+      <td>35.36%</td>
+      <td>2.79</td>
+      <td>3.86%</td>
+      <td>1.72</td>
+    </tr>
+    <tr>
+      <td>cost_plus_25</td>
+      <td>26.52%</td>
+      <td>2.79</td>
+      <td>2.89%</td>
+      <td>1.72</td>
+    </tr>
+    <tr>
+      <td>cost_plus_50</td>
+      <td>17.68%</td>
+      <td>2.79</td>
+      <td>1.93%</td>
+      <td>1.72</td>
+    </tr>
+  </tbody>
+</table>
+    </div>
+    <div class="col-md-5 explainer">
+      <p>Diese Tabelle zeigt, wie empfindlich die Strategie auf höhere Kosten
+      (Spreads, Kommissionen, Slippage) reagiert.</p>
+      <ul>
+        <li><strong>base:</strong> aktuelle angenommene Kosten.</li>
+        <li><strong>cost_plus_25:</strong> Kosten um 25&nbsp;% erhöht
+            (z.&nbsp;B. schlechtere Ausführung).</li>
+        <li><strong>cost_plus_50:</strong> Kosten um 50&nbsp;% erhöht.</li>
+      </ul>
+      <p>Wenn Sharpe und Total Return bei höheren Kosten kaum fallen, ist die
+      Strategie robust gegenüber schlechteren Marktbedingungen und Brokern.</p>
+    </div>
+  </div>
+
+  <h2>3. Kelly-Kriterium und Positionsgrößen</h2>
+  <div class="row">
+    <div class="col-md-6">
+      <h3>Kelly auf gesamtem Backtest</h3>
+      <table class="dataframe table table-sm table-striped table-bordered">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>Trefferquote</th>
+      <th>Payoff (Ø Gewinn / Ø Verlust)</th>
+      <th>Kelly (voll)</th>
+      <th>Kelly (halb)</th>
+      <th>Kelly (viertel)</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>Gesamter Backtest</th>
+      <td>51.13%</td>
+      <td>1.65</td>
+      <td>21.44%</td>
+      <td>10.72%</td>
+      <td>5.36%</td>
+    </tr>
+  </tbody>
+</table>
+    </div>
+    <div class="col-md-6">
+      <h3>Kelly nur auf Out-of-Sample (Walk-Forward)</h3>
+      <table class="dataframe table table-sm table-striped table-bordered">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>Trefferquote</th>
+      <th>Payoff (Ø Gewinn / Ø Verlust)</th>
+      <th>Kelly (voll)</th>
+      <th>Kelly (halb)</th>
+      <th>Kelly (viertel)</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>Nur Walk-Forward-OOS</th>
+      <td>52.98%</td>
+      <td>1.54</td>
+      <td>22.37%</td>
+      <td>11.18%</td>
+      <td>5.59%</td>
+    </tr>
+  </tbody>
+</table>
+    </div>
+  </div>
+  <div class="row">
+    <div class="col explainer">
+      <p>Das Kelly-Kriterium berechnet die theoretisch optimale Risikofraktion
+      vom Kontostand pro Trade, basierend auf Trefferquote und durchschnittlichem
+      Gewinn-Verlust-Verhältnis.</p>
+      <p><strong>Wichtige Regeln:</strong></p>
+      <ul>
+        <li>Voller Kelly-Wert ist in der Praxis meist zu aggressiv.</li>
+        <li>Häufig wird mit <strong>Kelly / 2</strong> oder <strong>Kelly / 4</strong>
+            gearbeitet, um Drawdowns zu begrenzen.</li>
+        <li>Die OOS-Kelly-Werte (nur Walk-Forward-Testfenster) sind meist realistischer
+            als die Werte aus dem gesamten Backtest.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2>4. Monte-Carlo-Simulation</h2>
+  <div class="row">
+    <div class="col-md-6">
+      <img src="mc_returns.png" alt="Monte Carlo Returns" class="plot" />
+    </div>
+    <div class="col-md-6">
+      <table class="dataframe table table-sm table-striped table-bordered">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>Wahrscheinlichkeit für positives Ergebnis</th>
+      <th>Median-Gesamtrendite</th>
+      <th>5%-Quantil Rendite</th>
+      <th>95%-Quantil Rendite</th>
+      <th>Median MaxDD</th>
+      <th>95%-Quantil MaxDD</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>Monte Carlo</th>
+      <td>100.00%</td>
+      <td>35.83%</td>
+      <td>19.22%</td>
+      <td>54.92%</td>
+      <td>3.86%</td>
+      <td>6.42%</td>
+    </tr>
+  </tbody>
+</table>
+      <p class="explainer">
+        Die Monte-Carlo-Simulation mischt die Trade-Reihenfolge zufällig durch und
+        erstellt viele mögliche Zukunftsverläufe. Dadurch wird sichtbar, wie
+        empfindlich die Strategie gegenüber Pechsträhnen ist.
+      </p>
+      <p class="explainer">
+        <strong>mc_positive_prob:</strong> Anteil der Simulationen, die mit Gewinn
+        enden. nahezu jede simulierte Zukunft war profitabel – sehr robustes Profil
+      </p>
+    </div>
+  </div>
+
+  <h2>5. Walk-Forward-Analyse (Out-of-Sample Stabilität)</h2>
+  <div class="row">
+    <div class="col-md-6">
+      <img src="walk_forward_sharpe.png" alt="Walk-Forward Sharpe" class="plot" />
+    </div>
+    <div class="col-md-6 explainer">
+      <p><strong>Durchschnittliche OOS-Sharpe:</strong> 3.29 –
+      außergewöhnlich stark (Seltenheit, oft nur mit Overfitting erreichbar)</p>
+      <p><strong>Durchschnittlicher OOS-MaxDD:</strong> 1.80% –
+      sehr geringe Drawdowns (psychologisch gut handelbar)</p>
+      <p>Die Walk-Forward-Analyse teilt die Historie in mehrere Zeitfenster:
+      In jedem Fenster wird auf einem Teil der Daten trainiert und auf einem
+      nachfolgenden Teil getestet (Out-of-Sample). So sieht man, ob die
+      Strategie auch in unbekannten Daten stabil funktioniert.</p>
+    </div>
+  </div>
+  <div class="row">
+    <div class="col">
+      <h3>Details pro Walk-Forward-Fenster</h3>
+      <table class="dataframe table table-sm table-striped table-bordered">
+  <thead>
+    <tr style="text-align: right;">
+      <th>Fenster</th>
+      <th>Train</th>
+      <th>Test</th>
+      <th>Trades</th>
+      <th>Sharpe</th>
+      <th>Profit Factor</th>
+      <th>MaxDD</th>
+      <th>Return</th>
+      <th>Kelly (voll)</th>
+      <th>Kelly (halb)</th>
+      <th>Kelly (viertel)</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>1</td>
+      <td>2024-02-01 07:00:00 → 2024-10-09 07:00:00</td>
+      <td>2024-10-10 07:00:00 → 2024-12-11 21:20:00</td>
+      <td>57</td>
+      <td>0.38</td>
+      <td>1.06</td>
+      <td>3.42%</td>
+      <td>0.53%</td>
+      <td>2.66%</td>
+      <td>1.33%</td>
+      <td>0.66%</td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>2024-02-22 07:00:00 → 2024-10-30 16:41:01</td>
+      <td>2024-10-31 07:00:00 → 2024-12-30 13:05:24</td>
+      <td>53</td>
+      <td>0.18</td>
+      <td>1.03</td>
+      <td>3.86%</td>
+      <td>0.26%</td>
+      <td>1.25%</td>
+      <td>0.62%</td>
+      <td>0.31%</td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td>2024-03-14 07:00:00 → 2024-11-20 07:00:00</td>
+      <td>2024-11-21 07:00:00 → 2024-12-30 13:05:24</td>
+      <td>36</td>
+      <td>2.07</td>
+      <td>1.43</td>
+      <td>1.98%</td>
+      <td>2.10%</td>
+      <td>14.31%</td>
+      <td>7.16%</td>
+      <td>3.58%</td>
+    </tr>
+    <tr>
+      <td>4</td>
+      <td>2024-04-04 07:00:00 → 2024-12-11 21:20:00</td>
+      <td>2024-12-12 07:00:00 → 2025-02-12 07:00:00</td>
+      <td>26</td>
+      <td>4.35</td>
+      <td>2.49</td>
+      <td>1.13%</td>
+      <td>3.85%</td>
+      <td>32.19%</td>
+      <td>16.10%</td>
+      <td>8.05%</td>
+    </tr>
+    <tr>
+      <td>5</td>
+      <td>2024-04-25 07:00:00 → 2024-12-30 13:05:24</td>
+      <td>2025-02-03 07:00:00 → 2025-03-05 21:20:00</td>
+      <td>29</td>
+      <td>4.47</td>
+      <td>2.11</td>
+      <td>0.96%</td>
+      <td>3.83%</td>
+      <td>32.70%</td>
+      <td>16.35%</td>
+      <td>8.17%</td>
+    </tr>
+    <tr>
+      <td>6</td>
+      <td>2024-05-16 07:00:00 → 2024-12-30 13:05:24</td>
+      <td>2025-02-03 07:00:00 → 2025-03-26 07:00:00</td>
+      <td>48</td>
+      <td>4.22</td>
+      <td>2.09</td>
+      <td>0.96%</td>
+      <td>6.32%</td>
+      <td>29.30%</td>
+      <td>14.65%</td>
+      <td>7.32%</td>
+    </tr>
+    <tr>
+      <td>7</td>
+      <td>2024-06-06 07:00:00 → 2025-02-12 07:00:00</td>
+      <td>2025-02-13 07:00:00 → 2025-04-16 21:20:00</td>
+      <td>59</td>
+      <td>3.25</td>
+      <td>2.04</td>
+      <td>1.71%</td>
+      <td>8.11%</td>
+      <td>27.64%</td>
+      <td>13.82%</td>
+      <td>6.91%</td>
+    </tr>
+    <tr>
+      <td>8</td>
+      <td>2024-06-27 07:00:00 → 2025-03-05 21:20:00</td>
+      <td>2025-03-06 07:00:00 → 2025-04-25 21:20:00</td>
+      <td>49</td>
+      <td>3.62</td>
+      <td>2.24</td>
+      <td>1.71%</td>
+      <td>8.52%</td>
+      <td>29.38%</td>
+      <td>14.69%</td>
+      <td>7.34%</td>
+    </tr>
+    <tr>
+      <td>9</td>
+      <td>2024-07-18 07:00:00 → 2025-03-26 07:00:00</td>
+      <td>2025-03-27 07:00:00 → 2025-04-25 21:20:00</td>
+      <td>30</td>
+      <td>3.64</td>
+      <td>2.34</td>
+      <td>1.71%</td>
+      <td>6.04%</td>
+      <td>32.47%</td>
+      <td>16.24%</td>
+      <td>8.12%</td>
+    </tr>
+    <tr>
+      <td>10</td>
+      <td>2024-08-08 07:00:00 → 2025-04-16 21:20:00</td>
+      <td>2025-04-17 07:00:00 → 2025-04-25 21:20:00</td>
+      <td>9</td>
+      <td>6.69</td>
+      <td>3.24</td>
+      <td>0.55%</td>
+      <td>2.72%</td>
+      <td>46.07%</td>
+      <td>23.04%</td>
+      <td>11.52%</td>
+    </tr>
+  </tbody>
+</table>
+    </div>
+  </div>
+
+  <h2>6. VIX-Regime & Marktumgebung</h2>
+  <div class="row">
+    <div class="col-md-6">
+      <img src="vix_regime_sharpe.png" alt="VIX Regime Sharpe" class="plot" />
+    </div>
+    <div class="col-md-6 explainer">
+      <p>Die VIX-Regime-Analyse zeigt, wie die Strategie in verschiedenen
+      Marktphasen (niedrige Volatilität, hohe Volatilität, Crash) abschneidet.</p>
+      <p>Eine Strategie, die nur in einem Regime funktioniert (z.&nbsp;B. nur
+      in ruhigen Märkten), ist anfälliger für plötzliche Umschwünge als eine
+      Strategie, die in mehreren Regimen solide performt.</p>
+    </div>
+  </div>
+  <div class="row">
+    <div class="col">
+      <table class="dataframe table table-sm table-striped table-bordered">
+  <thead>
+    <tr style="text-align: right;">
+      <th>Regime</th>
+      <th>Trades</th>
+      <th>Total Return</th>
+      <th>Sharpe</th>
+      <th>MaxDD</th>
+      <th>Profit Factor</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>High_Volatility</td>
+      <td>15</td>
+      <td>4.53%</td>
+      <td>4.28</td>
+      <td>0.57%</td>
+      <td>3.36</td>
+    </tr>
+    <tr>
+      <td>Low_Volatility</td>
+      <td>156</td>
+      <td>15.85%</td>
+      <td>2.79</td>
+      <td>2.22%</td>
+      <td>1.76</td>
+    </tr>
+    <tr>
+      <td>Range</td>
+      <td>161</td>
+      <td>13.37%</td>
+      <td>2.69</td>
+      <td>2.42%</td>
+      <td>1.58</td>
+    </tr>
+  </tbody>
+</table>
+    </div>
+  </div>
+
+  <h2>7. Multi-Asset-Robustheit</h2>
+  <div class="row">
+    <div class="col-md-6">
+      <img src="multi_asset_sharpe.png" alt="Multi-Asset Sharpe" class="plot" />
+    </div>
+    <div class="col-md-6 explainer">
+      <p>Die Multi-Asset-Analyse zeigt, auf wie vielen anderen Märkten das
+      gleiche Regelwerk (oder ähnliche Parameter) ebenfalls eine akzeptable
+      Performance erzielt.</p>
+      <p>
+        Ein hoher Anteil von Märkten mit Sharpe &gt; 1,0 deutet auf ein
+        robustes Grundprinzip hin, das nicht nur auf einen speziellen Markt
+        „hingefittet“ wurde.
+      </p>
+      <p>
+        In dieser Auswertung liegt die Multi-Asset-Hit-Rate bei
+        n/a.
+      </p>
+    </div>
+  </div>
+  <div class="row">
+    <div class="col">
+      <p>(Keine Daten verfügbar)</p>
+    </div>
+  </div>
+
+  <h2>8. Zusammenfassung für Laien</h2>
+  <div class="row">
+    <div class="col explainer">
+      <p>Dieser Report fasst zusammen, ob die Strategie aus Sicht eines
+      professionellen Quant-Traders für den Live-Handel geeignet ist.</p>
+      <ul>
+        <li><strong>Sharpe-Ratio:</strong> misst das Verhältnis von Rendite zu
+            Schwankung. Höher ist besser; Werte über 2 gelten als sehr gut.</li>
+        <li><strong>Maximaler Drawdown:</strong> größter Rückgang vom Hoch zum
+            Tief. Kleine Werte bedeuten weniger Stress und geringeres
+            „Abschalt-Risiko“.</li>
+        <li><strong>Kelly:</strong> liefert eine theoretische Empfehlung für die
+            Positionsgröße. In der Praxis nutzt man oft nur einen Bruchteil davon.</li>
+        <li><strong>Monte-Carlo:</strong> prüft, ob die Strategie auch bei
+            zufälligen Trade-Reihenfolgen robust bleibt.</li>
+        <li><strong>Walk-Forward:</strong> simuliert echte Live-Bedingungen, indem
+            nur auf bisher unbekannten Daten getestet wird.</li>
+        <li><strong>VIX-Regime:</strong> zeigt, in welchen Marktphasen die
+            Strategie funktioniert oder Schwierigkeiten hat.</li>
+        <li><strong>Multi-Asset:</strong> prüft, ob das Konzept auf anderen Märkten
+            ebenfalls trägt.</li>
+      </ul>
+      <p>Erst wenn mehrere dieser Blöcke gleichzeitig positiv ausfallen und das
+      Decision Gate „LIVE_ELIGIBLE“ meldet, sollte eine Strategie ernsthaft
+      für den Live-Handel in Betracht gezogen werden.</p>
+    </div>
+  </div>
+
+  <hr />
+  <p class="text-muted">Report-Verzeichnis: reports\RangeBreakoutUSDJPY__v4_trades_merged</p>
+
+</div>
+</body>
+</html>
