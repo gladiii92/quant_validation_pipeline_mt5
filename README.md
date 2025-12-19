@@ -43,29 +43,29 @@ Die Pipeline ist datenquellen-agnostisch. MT5 ist als Adapter implementiert – 
 ---
 
 ## End-to-End Pipeline
-Trade CSV (beliebige Quelle)
-│
-├─ Datenvalidierung & Bereinigung
-│
-├─ Full-Sample-Metriken (Kontext only)
-│
-├─ Kosten- & Slippage-Stress-Tests
-│
-├─ Regime-Alignment (VIX)
-│
-├─ Walk-Forward OOS-Evaluation
-│
-├─ Monte Carlo Pfad-Simulation
-│
-├─ Tail-Risiko (CVaR, worst paths)
-│
-├─ Kelly Sizing (IS + OOS)
-│
-├─ Multi-Asset-Robustheit (optional)
-│
-├─ ELITE Decision Gate
-│
-└─ Reports + HTML Dashboard
+- **Trade CSV
+
+- **Datenvalidierung
+
+- **Full-Sample Metriken
+
+- **Kosten/Slippage Tests
+
+- **VIX Regime Alignment
+
+- **Walk-Forward OOS
+
+- **Monte Carlo Simulation
+
+- **Tail-Risiko (CVaR)
+
+- **Kelly Sizing (OOS)
+
+- **Multi-Asset Check
+
+- **ELITE Decision Gate
+
+- **HTML Reports + Dashboard
 
 
 **Keine manuelle Intervention. Kein Cherry-Picking.**
@@ -74,28 +74,7 @@ Trade CSV (beliebige Quelle)
 
 ## Projektstruktur
 
-quant_validation_pipeline/
-│
-├── data/
-│ ├── raw/ # MT5-Exports (andere Quellen später)
-│ ├── processed/ # Bereinigte trade-level CSVs
-│ └── external/ # VIX / Regime-Daten
-│
-├── validation/
-│ ├── walk_forward.py
-│ ├── monte_carlo.py
-│ ├── cost_scenarios.py
-│ ├── kelly.py
-│ ├── regime_alignment.py
-│ └── gates.py # Capital-Readiness Logik
-│
-├── backtest/
-├── mt5_integration/
-├── reports/ # Automatisch generierte Ausgaben
-│
-├── run_pipeline.py # 🎯 Haupt-Einstiegspunkt
-├── config.yaml
-└── requirements.txt
+![alt text](image.png)
 
 ---
 
