@@ -8,7 +8,7 @@ Es beantwortet **eine einzige Frage**:
 
 > **Ist diese Strategie robust genug für echtes Kapital – oder nicht?**
 
-Die Pipeline ist datenquellen-agnostisch. MT5 ist als Adapter implementiert – jede Strategie, die eine trade-level CSV produziert, kann evaluiert werden.[file:1]
+Die Pipeline ist datenquellen-agnostisch. MT5 ist als Adapter implementiert – jede Strategie, die eine trade-level CSV produziert, kann evaluiert werden.
 
 ---
 
@@ -38,34 +38,34 @@ Die Pipeline ist datenquellen-agnostisch. MT5 ist als Adapter implementiert – 
 - **Position Sizing als Konsequenz, nicht Ziel**
 - **Automatisierung über Diskretion**
 
-*Strategien, die hier bestehen, verdienen das Recht, live zu gehen.*[file:1]
+*Strategien, die hier bestehen, verdienen das Recht, live zu gehen.*
 
 ---
 
-## 🔄 End-to-End Pipeline
+## End-to-End Pipeline
 Trade CSV (beliebige Quelle)
-↓
-Datenvalidierung & Bereinigung
-↓
-Full-Sample-Metriken (Kontext only)
-↓
-Kosten- & Slippage-Stress-Tests
-↓
-Regime-Alignment (VIX)
-↓
-Walk-Forward OOS-Evaluation
-↓
-Monte Carlo Pfad-Simulation
-↓
-Tail-Risiko (CVaR, worst paths)
-↓
-Kelly Sizing (IS + OOS)
-↓
-Multi-Asset-Robustheit (optional)
-↓
-ELITE Decision Gate
-↓
-Reports + HTML Dashboard
+│
+├─ Datenvalidierung & Bereinigung
+│
+├─ Full-Sample-Metriken (Kontext only)
+│
+├─ Kosten- & Slippage-Stress-Tests
+│
+├─ Regime-Alignment (VIX)
+│
+├─ Walk-Forward OOS-Evaluation
+│
+├─ Monte Carlo Pfad-Simulation
+│
+├─ Tail-Risiko (CVaR, worst paths)
+│
+├─ Kelly Sizing (IS + OOS)
+│
+├─ Multi-Asset-Robustheit (optional)
+│
+├─ ELITE Decision Gate
+│
+└─ Reports + HTML Dashboard
 
 
 **Keine manuelle Intervention. Kein Cherry-Picking.**
@@ -75,6 +75,7 @@ Reports + HTML Dashboard
 ## Projektstruktur
 
 quant_validation_pipeline/
+│
 ├── data/
 │ ├── raw/ # MT5-Exports (andere Quellen später)
 │ ├── processed/ # Bereinigte trade-level CSVs
@@ -92,7 +93,7 @@ quant_validation_pipeline/
 ├── mt5_integration/
 ├── reports/ # Automatisch generierte Ausgaben
 │
-├── run_pipeline.py # Haupt-Einstiegspunkt
+├── run_pipeline.py # 🎯 Haupt-Einstiegspunkt
 ├── config.yaml
 └── requirements.txt
 
@@ -102,8 +103,8 @@ quant_validation_pipeline/
 
 **Das finale Output ist keine Metrik, sondern eine ENTSCHEIDUNG.**
 
-| Kriterium            | Anforderung          |
-|----------------------|----------------------|
+| Kriterium            | Anforderung         |
+|----------------------|---------------------|
 | **OOS Sharpe**       | > 1.2               |
 | **OOS Profit Factor**| > 1.5               |
 | **OOS Max DD**       | < 20%               |
@@ -129,8 +130,8 @@ quant_validation_pipeline/
 
 ## Outputs pro Strategie
 
-| Visualisierung            | Datei                    |
-|---------------------------|--------------------------|
+| Visualisierung            | Datei                   |
+|---------------------------|-------------------------|
 | Equity Curve              | `equity.png`            |
 | MC Return Distribution    | `mcreturns.png`         |
 | MC Equity Paths (100+)    | `mcpaths.png`           |
@@ -195,7 +196,7 @@ entry_time,exit_time,pnl,volume
 - Robustness Validation
 - Decision Automation
 
-**Disclaimer:** Für Research only. Trading = Risk. Past performance ≠ future results.[file:1]
+**Disclaimer:** Für Research only. Trading = Risk. Past performance ≠ future results.
 
 ---
 
