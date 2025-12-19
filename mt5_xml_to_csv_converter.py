@@ -61,18 +61,14 @@ def extract_header_info(xlsx_path: str) -> Dict[str, Any]:
     strategy_clean = strategy_clean.replace(" ", "_")
     strategy_clean = strategy_clean.replace("-", "_")
 
-    # NEU: generischer Strategie-Key, z.B. RangeBreakoutUSDJPY_v4
-    # dazu nur den Teil vor Symbol/Timeframe nehmen
-    # Angenommen Titel: "RangeBreakoutUSDJPY -v4 USDJPY,M15 2024.01.01-2025.09.25"
-    # extract_header_info kennt den Titel nicht direkt, aber strategy_name_raw reicht meist
+    # generischer Strategie-Key, z.B. RangeBreakoutUSDJPY_v4
     strategy_key = strategy_clean
-    # doppelte Unterstriche zu einfachen
     strategy_key = strategy_key.replace("__", "_")
 
     return {
         "strategy_name_raw": strategy_name,
         "strategy_name": strategy_clean,
-        "strategy_key": strategy_key,  # NEU
+        "strategy_key": strategy_key,
         "symbol": symbol,
         "timeframe": timeframe,
         "date_from": date_from,
@@ -199,7 +195,7 @@ def convert_mt5_xlsx_to_csv(xlsx_path: str, output_csv: str) -> Path:
         "Richtung",
         "Volumen_trade",  # Volumen aus Trades
         "Preis_trade",    # Preis aus Trades
-        "Auftrag",        # Order-ID (gleich wie Trade-Verknüpfung)
+        "Auftrag",        # Order-ID
         "Gewinn",
         "Kontostand",
         "Eröffnungszeit", # aus Orders
@@ -208,9 +204,9 @@ def convert_mt5_xlsx_to_csv(xlsx_path: str, output_csv: str) -> Path:
         "S/L",
         "T/P",
         "Kommentar_trade",
-        "Kommentar_order"
+        "Kommentar_order",
     ]
-    
+
     available_cols = [c for c in output_cols if c in merged.columns]
     merged = merged[available_cols].copy()
 
@@ -240,35 +236,34 @@ def auto_convert_raw(xlsx_path: str, base_output_dir: str = "data/processed") ->
 
 def batch_convert_raw(
     raw_dir: str = "data/raw",
-    base_output_dir: str = "processed",
+    base_output_dir: str = "data/processed",
     overwrite: bool = False,
 ) -> None:
     """
     Batch-Mode:
-    - Nimmt alle .xlsx in raw_dir
-    - Für jede Datei:
-      * Header lesen → Output-Pfad bestimmen
-      * Wenn CSV existiert und neuer/gleich alt: skip (außer overwrite=True)
+    - Sucht rekursiv alle .xlsx in raw_dir
+    - Schreibt pro Strategie in data/processed/<strategy_key>/...
     """
     raw_path = Path(raw_dir)
-    xlsx_files = sorted(raw_path.glob("*.xlsx"))
+    base_output_path = Path(base_output_dir)
+    base_output_path.mkdir(parents=True, exist_ok=True)
 
-    if not xlsx_files:
-        print(f"Keine .xlsx in {raw_path} gefunden.")
-        return
-
-    for xlsx_file in xlsx_files:
+    for xlsx_file in raw_path.rglob("*.xlsx"):
         header = extract_header_info(str(xlsx_file))
-        out_path = build_output_path(header, base_dir=base_output_dir)
+        strategy_key = header.get("strategy_key") or header["strategy_name"]
+        strategy_key = strategy_key.replace(" ", "_").replace("-", "_").replace("__", "_")
 
-        # Skip-Logik
-        if out_path.exists() and not overwrite:
-            if out_path.stat().st_mtime >= xlsx_file.stat().st_mtime:
-                print(f"[SKIP] {xlsx_file.name} → {out_path.name} (bereits aktuell)")
-                continue
+        # Pro Strategie ein Unterordner in processed
+        strategy_out_dir = base_output_path / strategy_key
+        strategy_out_dir.mkdir(parents=True, exist_ok=True)
 
-        print(f"[CONVERT] {xlsx_file.name} → {out_path.name}")
-        convert_mt5_xlsx_to_csv(str(xlsx_file), str(out_path))
+        trades_csv_path = strategy_out_dir / f"{header['strategy_name']}_trades_merged.csv"
+
+        if trades_csv_path.exists() and not overwrite:
+            continue
+
+        # einzelne Datei konvertieren
+        convert_mt5_xlsx_to_csv(str(xlsx_file), str(trades_csv_path))
 
 
 if __name__ == "__main__":
@@ -281,8 +276,10 @@ if __name__ == "__main__":
         "xlsx_file",
         type=str,
         nargs="?",
-        help="Pfad zur einzelnen MT5-Strategietester-Exceldatei (.xlsx). "
-             "Wenn leer → Batch-Mode über alle .xlsx in data/raw.",
+        help=(
+            "Pfad zur einzelnen MT5-Strategietester-Exceldatei (.xlsx). "
+            "Wenn leer → Batch-Mode über alle .xlsx in data/raw."
+        ),
     )
     parser.add_argument(
         "--raw-dir",

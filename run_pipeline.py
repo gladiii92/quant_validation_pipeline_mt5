@@ -11,6 +11,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 from mt5_xml_to_csv_converter import batch_convert_raw
+from organize_raw import organize_raw
 from mt5_integration.trades_loader import MT5TradesLoader
 from backtest.metrics import calculate_metrics
 from validation.gates import DecisionGate
@@ -29,9 +30,9 @@ logger = get_logger("PIPELINE", log_file="logs/pipeline.log")
 
 
 def find_latest_trades_csv(processed_dir: str = "data/processed") -> str:
-    """Nimmt die neueste *_trades_merged.csv aus processed."""
+    """Nimmt die neueste *_trades_merged.csv rekursiv aus processed/**."""
     files = sorted(
-        Path(processed_dir).glob("*_trades_merged.csv"),
+        Path(processed_dir).rglob("*_trades_merged.csv"),  # NEU: rglob
         key=lambda p: p.stat().st_mtime,
         reverse=True,
     )
@@ -549,7 +550,7 @@ if __name__ == "__main__":
         required=False,
         help=(
             "Path to MT5 trades CSV file "
-            "(wenn leer → auto: MT5-raw konvertieren + neueste *_trades_merged.csv nutzen)"
+            "(wenn leer → auto: raw-Dateien organisieren, konvertieren und neueste *_trades_merged.csv nutzen)"
         ),
     )
     parser.add_argument(
@@ -561,19 +562,25 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.trades_file:
+        # Direkter Pfad angegeben -> nur Pipeline laufen lassen
         trades_path = args.trades_file
     else:
-        processed_dir = "data/processed"
         raw_dir = "data/raw"
+        processed_dir = "data/processed"
+
+        # 1) Rohdaten nach Strategien sortieren
+        logger.info("Organizing raw MT5 files into strategy folders...")
+        organize_raw(raw_dir=raw_dir)
+
+        # 2) XLSX → *_trades_merged.csv für alle Strategien
+        logger.info("Converting MT5 raw files to merged trades CSVs...")
+        batch_convert_raw(raw_dir=raw_dir, base_output_dir=processed_dir, overwrite=False)
+
+        # 3) Neueste *_trades_merged.csv in processed/** auswählen
         try:
             trades_path = find_latest_trades_csv(processed_dir)
-        except FileNotFoundError:
-            logger.info(
-                "No *_trades_merged.csv found, running MT5 converter on raw files..."
-            )
-            batch_convert_raw(
-                raw_dir=raw_dir, base_output_dir=processed_dir, overwrite=False
-            )
-            trades_path = find_latest_trades_csv(processed_dir)
+        except FileNotFoundError as e:
+            logger.error("❌ %s", e)
+            raise
 
     run_pipeline(trades_path, config_path=args.config)
