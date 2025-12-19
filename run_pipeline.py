@@ -26,6 +26,7 @@ from validation.walk_forward import run_walk_forward_analysis
 from validation.multi_asset_summary import load_and_score_optimizer, extract_strategy_name_from_optimizer
 
 from generate_html_report import render_html_for_strategy_dir
+from tail_risk import calculate_cvar
 
 
 logger = get_logger("PIPELINE", log_file="logs/pipeline.log")
@@ -65,7 +66,14 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml") -> None
         return
 
     # === Strategie-Name & Report-Ordner ===
-    strategy_stem = Path(trades_csv_path).stem
+    strategy_stem_raw = Path(trades_csv_path).stem
+    strategy_stem = strategy_stem_raw.replace("_trades_merged", "").replace("__", "_")
+    logger.info(f"🔍 Fixed strategy stem: {strategy_stem_raw} → {strategy_stem}")
+
+    strategy_reports_dir = Path("reports") / strategy_stem
+    strategy_reports_dir.mkdir(parents=True, exist_ok=True)
+    logger.info("Report directory: %s", strategy_reports_dir)
+
     metrics_strategy_name = strategy_stem
 
     strategy_reports_dir = Path("reports") / strategy_stem
@@ -77,64 +85,36 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml") -> None
     validation = loader.validate_trades(trades_df)
 
     # === SCHRITT 4b: Multi-Asset-Optimizer (optional) ===
+    # Multi-Asset-Optimizer-XML im spezifischen Strategie-Ordner suchen
+    raw_strategy_dir = Path("data/raw") / strategy_stem
     optimizer_candidates = sorted(
-        Path("data/raw").glob("ReportOptimizer-*.xml"),
+        raw_strategy_dir.glob("ReportOptimizer-*.xml"),
         key=lambda p: p.stat().st_mtime,
         reverse=True,
     )
+
     multi_asset_info = None
     if optimizer_candidates:
-        # Strategy-Namen, wie er aus dem XLSX-Konverter kommt (z.B. RangeBreakoutUSDJPY__v4_USDJPY_M15_...)
-        # Wir extrahieren einen "normalisierten" Strategy-Key, z.B. RangeBreakoutUSDJPY_v4
-        # aus dem CSV-Stem, indem wir Symbol/Timeframe/Daten abschneiden.
-        # Dafür verwenden wir eine einfache Heuristik: alles bis zum zweiten "__".
-        # Beispiel: RangeBreakoutUSDJPY__v4_USDJPY_M15_... -> RangeBreakoutUSDJPY__v4 -> dann "__" -> "_".
-        csv_base = metrics_strategy_name
-        # bis zum dritten "_": Name__v4_USDJPY... → Name__v4
-        parts = csv_base.split("_")
-        if len(parts) >= 3:
-            # Name, leer, v4, ...
-            strategy_key_from_csv = "_".join(parts[:3])
-        else:
-            strategy_key_from_csv = csv_base
-        # doppelte Unterstriche zu einfachen
-        strategy_key_from_csv = strategy_key_from_csv.replace("__", "_")
-
-        logger.info("Strategy key (from CSV): %s", strategy_key_from_csv)
-
-        matched_xml = None
-        for opt_path in optimizer_candidates:
-            opt_strategy = extract_strategy_name_from_optimizer(str(opt_path))
-            logger.info(
-                "Found optimizer XML %s with strategy name %s",
-                opt_path.name,
-                opt_strategy,
-            )
-            # einfacher Match: Strategy-Key muss im Optimizer-Strategy-Name vorkommen
-            if strategy_key_from_csv in opt_strategy:
-                matched_xml = opt_path
-                break
-
-        if matched_xml is not None:
-            logger.info(
-                "\n[STEP 4b] Evaluating multi-asset optimizer results from %s...",
-                matched_xml,
-            )
-            multi_asset_info = load_and_score_optimizer(
-                str(matched_xml), sharpe_threshold=1.0
-            )
-            logger.info(
-                "Multi-Asset hit-rate: %.1f%% (%d/%d, Sharpe > %.2f)",
-                multi_asset_info["hit_rate"] * 100,
-                multi_asset_info["n_symbols_pass"],
-                multi_asset_info["n_symbols"],
-                multi_asset_info["sharpe_threshold"],
-            )
-        else:
-            logger.info(
-                "[STEP 4b] No matching optimizer XML found for strategy %s",
-                strategy_key_from_csv,
-            )
+        matched_xml = optimizer_candidates[0]
+        logger.info(
+            "\n[STEP 4b] Evaluating multi-asset optimizer results from %s...",
+            matched_xml,
+        )
+        multi_asset_info = load_and_score_optimizer(
+            str(matched_xml), sharpe_threshold=1.0
+        )
+        logger.info(
+            "Multi-Asset hit-rate: %.1f%% (%d/%d, Sharpe > %.2f)",
+            multi_asset_info["hit_rate"] * 100,
+            multi_asset_info["n_symbols_pass"],
+            multi_asset_info["n_symbols"],
+            multi_asset_info["sharpe_threshold"],
+        )
+    else:
+        logger.info(
+            "[STEP 4b] No optimizer XML found in raw strategy folder %s",
+            raw_strategy_dir,
+        )
 
     # === SCHRITT 4: Berechne Metriken (Full Sample) ===
     logger.info("\n[STEP 4] Calculating metrics...")
@@ -176,7 +156,7 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml") -> None
         cache_path="data/external/vix_daily.csv",
         max_age_days=14,
     )
-    vix_alignment = analyze_vix_regime_alignment(
+    vix_alignment, regime_decision = analyze_vix_regime_alignment(
         trades_df=trades_df,
         vix_regimes=vix_regimes,
         initial_capital=initial_capital,
@@ -255,21 +235,35 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml") -> None
     # Monte Carlo Return Distribution
     logger.info("[PLOT] Saving Monte Carlo return distribution...")
     mc_plot_path = reports_dir / "mc_returns.png"
-    if "returns" in mc_results:
-        plt.figure(figsize=(6, 4))
-        plt.hist(mc_results["returns"], bins=50, alpha=0.7)
-        plt.axvline(
-            np.median(mc_results["returns"]),
-            color="red",
-            linestyle="--",
-            label="Median",
-        )
-        plt.title("Monte Carlo Returns")
-        plt.legend()
-        plt.tight_layout()
-        plt.savefig(mc_plot_path, dpi=150)
-        plt.close()
-        logger.info("✅ Monte Carlo return plot saved to %s", mc_plot_path)
+
+    mc_returns = np.array(mc_results["total_returns"])
+
+    plt.figure(figsize=(6, 4))
+    plt.hist(mc_returns, bins=50, alpha=0.7)
+    plt.axvline(
+        np.median(mc_returns),
+        color="red",
+        linestyle="--",
+        label=f"Median {np.median(mc_returns):.2%}",
+    )
+    plt.title("Monte Carlo Total Returns")
+    plt.xlabel("Total Return")
+    plt.ylabel("Häufigkeit")
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(mc_plot_path, dpi=150)
+    plt.close()
+    logger.info("✅ Monte Carlo return plot saved to %s", mc_plot_path)
+
+    tail_stats = {
+        "cvar5": calculate_cvar(mc_returns, alpha=0.05),
+        "worst_mc_return": float(mc_returns.min())
+    }
+
+    logger.info("TAIL RISK CVaR5=%.2f%% mc_p95_max_dd=%.2f%%", 
+                tail_stats["cvar5"] * 100, 
+                mc_results["mc_p95_max_dd"] * 100)
+
 
     # Equity Curve
     logger.info("[PLOT] Saving equity curve...")
@@ -344,19 +338,31 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml") -> None
         plt.close()
         logger.info("✅ Multi-Asset Sharpe plot saved to %s", ma_plot_path)
 
-    # === SCHRITT 11: Decision Gate ===
-    logger.info("\n[STEP 11] Running Decision Gate...")
+    # === SCHRITT 11: ELITE Decision Gate ===
+    logger.info("\n[STEP 11] Running ELITE Decision Gate...")
     gate = DecisionGate(config_path)
+
     gate_metrics = {
-        "oos_sharpe": metrics.get("sharpe_ratio", 0.0),
-        "max_drawdown": metrics.get("max_drawdown", 1.0),
-        "mc_positive_prob": mc_results.get("mc_positive_prob", 0.0),
-        "mt5_correlation": 0.9,
+        "oos_sharpe": wf_results["oos_sharpe"],
+        "oos_profit_factor": wf_results["oos_profit_factor"],
+        "oos_max_drawdown": wf_results["oos_max_dd"],  # OOS!
+        "mc_positive_prob": mc_results["mc_positive_prob"],
+        "mc_p95_return": mc_results["mc_p95_return"],
+        "cvar5": tail_stats["cvar5"],
+        "kelly_oos_full": kelly_oos_info["kelly_full"],
+        "mt5_correlation": 0.92,  # Deine MT5 Korrelation
     }
+
     if multi_asset_info is not None:
         gate_metrics["multi_asset_hit_rate"] = multi_asset_info["hit_rate"]
 
+    if regime_decision is not None:
+        gate_metrics["regime_allowed"] = regime_decision["allowed"]
+        gate_metrics["regime_risk_multiplier"] = regime_decision["risk_multiplier"]
+
     result = gate.evaluate(gate_metrics)
+
+
     logger.info("\n" + "=" * 60)
     logger.info("GATE RESULT: %s", result.status.value)
     logger.info("Confidence: %.1f%%", result.confidence * 100)

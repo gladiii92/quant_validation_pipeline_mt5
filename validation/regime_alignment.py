@@ -76,7 +76,23 @@ def analyze_vix_regime_alignment(
 
     strat_policy = policy_full["strategies"][strategy_key]
 
+    # Decision Logik HINZUFÜGEN (wie du gemacht hast):
+    regime_decision = {
+        "allowed": True,
+        "risk_multiplier": 1.0,
+        "violations": []
+    }
+    
+    for regime_name, stats in regime_stats.items():
+        regime_rule = strat_policy.get(regime_name, {})
+        if "min_sharpe" in regime_rule and stats["sharpe_ratio"] < regime_rule["min_sharpe"]:
+            regime_decision["allowed"] = False
+            regime_decision["violations"].append(f"{regime_name}: Sharpe {stats['sharpe_ratio']:.2f} < {regime_rule['min_sharpe']}")
+            regime_decision["risk_multiplier"] *= 0.5
+
+    # **WICHTIG: TUPLE zurückgeben** (nicht Dict!)
     return {
         "regime_stats": regime_stats,
         "policy": strat_policy,
-    }
+    }, regime_decision
+

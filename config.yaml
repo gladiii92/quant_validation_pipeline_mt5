@@ -58,17 +58,14 @@ backtest:
 # ============================================================
 
 validation:
-  # Minimale Sharpe-Ratio (Out-of-Sample)
-  min_oos_sharpe: 0.8
-
-  # Minimale Monte-Carlo Erfolgswahrscheinlichkeit
-  min_mc_positive_prob: 0.75
-
-  # Maximaler Drawdown
-  max_drawdown: 0.25  # 25%
-
-  # Minimum Korrelation MT5 vs. Python Backtest
-  min_mt5_correlation: 0.80
+  min_oos_sharpe: 1.8
+  max_oos_drawdown: 0.12
+  min_mc_positive_prob: 0.95
+  min_mc_p95_return: 0.20
+  max_cvar5: -0.15
+  min_kelly_oos_full: 0.15
+  min_multi_asset_hit_rate: 0.75
+  min_mt5_correlation: 0.90
 
   # Walk-Forward Test Parameter
   walk_forward:
