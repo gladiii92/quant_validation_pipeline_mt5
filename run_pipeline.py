@@ -85,16 +85,22 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml"):
 
 
     # === SCHRITT 5: Multi-Asset-Optimizer ===
-    optimizer_xml = Path("data/raw/multi_asset_optimizer.xml")
+    optimizer_candidates = sorted(
+        Path("data/raw").glob("ReportOptimizer-*.xml"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
     multi_asset_info = None
-    if optimizer_xml.exists():
-        logger.info("\n[STEP 4b] Evaluating multi-asset optimizer results...")
-        multi_asset_info = load_and_score_optimizer(str(optimizer_xml))
+    if optimizer_candidates:
+        optimizer_xml = optimizer_candidates[0]
+        logger.info("\n[STEP 4b] Evaluating multi-asset optimizer results from %s...", optimizer_xml)
+        multi_asset_info = load_and_score_optimizer(str(optimizer_xml), sharpe_threshold=1.0)
         logger.info(
-            "Multi-Asset hit-rate: %.1f%% (%d/%d)",
+            "Multi-Asset hit-rate: %.1f%% (%d/%d, Sharpe > %.2f)",
             multi_asset_info["hit_rate"] * 100,
             multi_asset_info["n_symbols_pass"],
             multi_asset_info["n_symbols"],
+            multi_asset_info["sharpe_threshold"],
         )
 
 
