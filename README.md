@@ -43,29 +43,29 @@ Die Pipeline ist datenquellen-agnostisch. MT5 ist als Adapter implementiert – 
 ---
 
 ## End-to-End Pipeline
-- **Trade CSV
+- Trade CSV
 
-- **Datenvalidierung
+- Datenvalidierung
 
-- **Full-Sample Metriken
+- Full-Sample Metriken
 
-- **Kosten/Slippage Tests
+- Kosten/Slippage Tests
 
-- **VIX Regime Alignment
+- VIX Regime Alignment
 
-- **Walk-Forward OOS
+- Walk-Forward OOS
 
-- **Monte Carlo Simulation
+- Monte Carlo Simulation
 
-- **Tail-Risiko (CVaR)
+- Tail-Risiko (CVaR)
 
-- **Kelly Sizing (OOS)
+- Kelly Sizing (OOS)
 
-- **Multi-Asset Check
+- Multi-Asset Check
 
-- **ELITE Decision Gate
+- ELITE Decision Gate
 
-- **HTML Reports + Dashboard
+- HTML Reports + Dashboard
 
 
 **Keine manuelle Intervention. Kein Cherry-Picking.**
