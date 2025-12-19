@@ -14,6 +14,8 @@ import pandas as pd
 from backtest.metrics import calculate_metrics
 from utils.logger import get_logger
 
+from validation.kelly import estimate_kelly_from_trades
+
 logger = get_logger(__name__)
 
 
@@ -124,6 +126,7 @@ def run_walk_forward_analysis(
             continue
 
         metrics_test = calculate_metrics(test_df, initial_capital=initial_capital)
+        kelly_test = estimate_kelly_from_trades(test_df)
         wm = {
             "window_id": idx,
             "train_start": train_df["entry_time"].min() if len(train_df) > 0 else None,
@@ -135,8 +138,10 @@ def run_walk_forward_analysis(
             "test_profit_factor": metrics_test["profit_factor"],
             "test_max_dd": metrics_test["max_drawdown"],
             "test_total_return": metrics_test["total_return"],
-            # NEU: Indizes der Test-Trades im Original-DataFrame
             "test_indices": test_df.index.tolist(),
+            "test_kelly_full": kelly_test["kelly_full"],
+            "test_kelly_half": kelly_test["kelly_half"],
+            "test_kelly_quarter": kelly_test["kelly_quarter"],
         }
         window_metrics.append(wm)
 

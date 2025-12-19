@@ -69,8 +69,13 @@ class MT5TradesLoader:
 
         logger.info("Loading merged MT5 trades from %s...", csv_path)
 
-        # Deine neue CSV ist mit Komma getrennt
+        # Versuche zuerst Komma, fallback auf Semikolon (für alte/Test-Files)
         df = pd.read_csv(path, sep=",")
+        if len(df.columns) == 1:
+            # vermutlich ;-getrennt
+            df = pd.read_csv(path, sep=";")
+
+        logger.info("Columns in CSV: %s", list(df.columns))
 
         logger.info("Columns in CSV: %s", list(df.columns))
 

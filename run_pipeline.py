@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
+from mt5_xml_to_csv_converter import batch_convert_raw
 from mt5_integration.trades_loader import MT5TradesLoader
 from backtest.metrics import calculate_metrics
 from validation.gates import DecisionGate
@@ -22,6 +23,7 @@ from validation.regime_alignment import analyze_vix_regime_alignment
 from validation.monte_carlo import run_monte_carlo_on_trades
 from validation.walk_forward import run_walk_forward_analysis
 from validation.multi_asset_summary import load_and_score_optimizer
+
 
 logger = get_logger("PIPELINE", log_file="logs/pipeline.log")
 
@@ -39,9 +41,7 @@ def find_latest_trades_csv(processed_dir: str = "data/processed") -> str:
 
 
 def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml") -> None:
-    """
-    Hauptfunktion der Pipeline.
-    """
+    """Hauptfunktion der Pipeline."""
     logger.info("=" * 60)
     logger.info("🚀 QUANT VALIDATION PIPELINE STARTED")
     logger.info("=" * 60)
@@ -61,17 +61,25 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml") -> None
         logger.error("❌ %s", e)
         return
 
+    # === Strategie-Name & Report-Ordner ===
+    strategy_stem = Path(trades_csv_path).stem
+    metrics_strategy_name = strategy_stem
+
+    strategy_reports_dir = Path("reports") / strategy_stem
+    strategy_reports_dir.mkdir(parents=True, exist_ok=True)
+    logger.info("Report directory: %s", strategy_reports_dir)
+
     # === SCHRITT 3: Validiere Trades ===
     logger.info("\n[STEP 3] Validating trades...")
     validation = loader.validate_trades(trades_df)
 
     # === SCHRITT 4b: Multi-Asset-Optimizer (optional) ===
-    multi_asset_info = None
     optimizer_candidates = sorted(
         Path("data/raw").glob("ReportOptimizer-*.xml"),
         key=lambda p: p.stat().st_mtime,
         reverse=True,
     )
+    multi_asset_info = None
     if optimizer_candidates:
         optimizer_xml = optimizer_candidates[0]
         logger.info(
@@ -93,7 +101,7 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml") -> None
     logger.info("\n[STEP 4] Calculating metrics...")
     initial_capital = config["backtest"]["initial_capital"]
     metrics = calculate_metrics(trades_df, initial_capital)
-    metrics["strategy_name"] = Path(trades_csv_path).stem
+    metrics["strategy_name"] = metrics_strategy_name
     metrics["total_trades"] = len(trades_df)
     metrics["date_range"] = (
         trades_df["entry_time"].min(),
@@ -119,7 +127,7 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml") -> None
     logger.info("✅ Cost scenarios finished")
 
     # === SCHRITT 6: Kelly-basiertes Sizing (Full Sample) ===
-    logger.info("\n[STEP 6] Estimating Kelly sizing...")
+    logger.info("\n[STEP 6] Estimating Kelly sizing (full sample)...")
     kelly_info = estimate_kelly_from_trades(trades_df)
     logger.info("✅ Kelly estimation finished")
 
@@ -183,8 +191,6 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml") -> None
         }
         logger.info("⚠️ No OOS trades for Kelly estimation.")
 
-
-
     # === SCHRITT 8: Monte Carlo ===
     logger.info("\n[STEP 8] Running Monte Carlo on trade sequence...")
     mc_results = run_monte_carlo_on_trades(
@@ -203,15 +209,13 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml") -> None
     )
     logger.info(" mc_p95_max_dd: %.2f%%", mc_results["mc_p95_max_dd"] * 100)
 
-    # === PLOTS ===
+    # === PLOTS (alle in strategy_reports_dir) ===
 
-    reports_dir = Path("reports")
-    reports_dir.mkdir(exist_ok=True)
-    stem = Path(trades_csv_path).stem
+    reports_dir = strategy_reports_dir
 
     # Monte Carlo Return Distribution
     logger.info("[PLOT] Saving Monte Carlo return distribution...")
-    mc_plot_path = reports_dir / f"{stem}_mc_returns.png"
+    mc_plot_path = reports_dir / "mc_returns.png"
     if "returns" in mc_results:
         plt.figure(figsize=(6, 4))
         plt.hist(mc_results["returns"], bins=50, alpha=0.7)
@@ -236,7 +240,7 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml") -> None
     plt.title("Equity Curve")
     plt.ylabel("Equity")
     plt.tight_layout()
-    eq_path = reports_dir / f"{stem}_equity.png"
+    eq_path = reports_dir / "equity.png"
     plt.savefig(eq_path, dpi=150)
     plt.close()
     logger.info("✅ Equity curve saved to %s", eq_path)
@@ -251,14 +255,14 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml") -> None
     plt.title("Sharpe by VIX Regime")
     plt.ylabel("Sharpe")
     plt.tight_layout()
-    vix_plot_path = reports_dir / f"{stem}_vix_regime_sharpe.png"
+    vix_plot_path = reports_dir / "vix_regime_sharpe.png"
     plt.savefig(vix_plot_path, dpi=150)
     plt.close()
     logger.info("✅ VIX regime Sharpe plot saved to %s", vix_plot_path)
 
     # Walk-Forward Sharpe per Window
     logger.info("[PLOT] Saving Walk-Forward Sharpe by window...")
-    wf_plot_path = reports_dir / f"{stem}_walk_forward_sharpe.png"
+    wf_plot_path = reports_dir / "walk_forward_sharpe.png"
     if wf_results["window_metrics"]:
         wf_sharpes = [w["test_sharpe"] for w in wf_results["window_metrics"]]
         wf_ids = [w["window_id"] for w in wf_results["window_metrics"]]
@@ -282,7 +286,7 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml") -> None
     # Multi-Asset Sharpe per Symbol (falls vorhanden)
     if multi_asset_info is not None and multi_asset_info.get("details"):
         logger.info("[PLOT] Saving Multi-Asset Sharpe by symbol...")
-        ma_plot_path = reports_dir / f"{stem}_multi_asset_sharpe.png"
+        ma_plot_path = reports_dir / "multi_asset_sharpe.png"
         df_ma = pd.DataFrame(multi_asset_info["details"])
         df_ma = df_ma.sort_values("sharpe", ascending=False)
         plt.figure(figsize=(8, 4))
@@ -329,7 +333,7 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml") -> None
         "metrics": metrics,
         "cost_results": cost_results,
         "kelly": kelly_info,
-        "kelly_oos": kelly_oos_info,        # NEU
+        "kelly_oos": kelly_oos_info,
         "vix_alignment": vix_alignment,
         "mc_results": mc_results,
         "walk_forward": wf_results,
@@ -341,15 +345,13 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml") -> None
             "violated_criteria": result.violated_criteria,
         },
     }
-
-    summary_path = reports_dir / f"{stem}_summary.json"
+    summary_path = reports_dir / "summary.json"
     with open(summary_path, "w", encoding="utf-8") as jf:
         json.dump(summary, jf, default=str, indent=2)
 
     # === SCHRITT 12: Report speichern (mit Tabellen) ===
     logger.info("[STEP 12] Saving report...")
-    report_path = reports_dir / f"{stem}_report.txt"
-    Path("reports").mkdir(exist_ok=True)
+    report_path = reports_dir / "report.txt"
 
     base_df = pd.DataFrame(
         {
@@ -386,6 +388,17 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml") -> None
         index=["Kelly"],
     )
 
+    kelly_oos_df = pd.DataFrame(
+        {
+            "win_rate": [f"{kelly_oos_info['win_rate']:.2%}"],
+            "payoff": [f"{kelly_oos_info['payoff_ratio']:.2f}"],
+            "full": [f"{kelly_oos_info['kelly_full']:.2%}"],
+            "half": [f"{kelly_oos_info['kelly_half']:.2%}"],
+            "quarter": [f"{kelly_oos_info['kelly_quarter']:.2%}"],
+        },
+        index=["Kelly_OOS"],
+    )
+
     vix_rows = []
     for r_name, m in vix_alignment["regime_stats"].items():
         vix_rows.append(
@@ -412,6 +425,9 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml") -> None
                 "PF": f"{w['test_profit_factor']:.2f}",
                 "MaxDD": f"{w['test_max_dd']:.2%}",
                 "Return": f"{w['test_total_return']:.2%}",
+                "Kelly_full": f"{w.get('test_kelly_full', 0.0):.2%}",
+                "Kelly_half": f"{w.get('test_kelly_half', 0.0):.2%}",
+                "Kelly_quarter": f"{w.get('test_kelly_quarter', 0.0):.2%}",
             }
         )
     wf_df = pd.DataFrame(wf_rows)
@@ -430,22 +446,9 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml") -> None
         f.write("COST SCENARIOS:\n")
         f.write(cost_df.to_markdown(index=False) + "\n\n")
 
-        f.write("KELLY SIZING:\n")
-        f.write(kelly_df.to_markdown() + "\n\n")
-
         f.write("KELLY SIZING (Full Sample):\n")
         f.write(kelly_df.to_markdown() + "\n\n")
 
-        kelly_oos_df = pd.DataFrame(
-            {
-                "win_rate": [f"{kelly_oos_info['win_rate']:.2%}"],
-                "payoff": [f"{kelly_oos_info['payoff_ratio']:.2f}"],
-                "full": [f"{kelly_oos_info['kelly_full']:.2%}"],
-                "half": [f"{kelly_oos_info['kelly_half']:.2%}"],
-                "quarter": [f"{kelly_oos_info['kelly_quarter']:.2%}"],
-            },
-            index=["Kelly_OOS"],
-        )
         f.write("KELLY SIZING (Walk-Forward OOS only):\n")
         f.write(kelly_oos_df.to_markdown() + "\n\n")
 
@@ -503,8 +506,6 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml") -> None
 
 
 if __name__ == "__main__":
-    from mt5_xml_to_csv_converter import batch_convert_raw
-
     parser = argparse.ArgumentParser(description="Quant Validation Pipeline")
     parser.add_argument(
         "--trades-file",
@@ -534,7 +535,9 @@ if __name__ == "__main__":
             logger.info(
                 "No *_trades_merged.csv found, running MT5 converter on raw files..."
             )
-            batch_convert_raw(raw_dir=raw_dir, base_output_dir=processed_dir, overwrite=False)
+            batch_convert_raw(
+                raw_dir=raw_dir, base_output_dir=processed_dir, overwrite=False
+            )
             trades_path = find_latest_trades_csv(processed_dir)
 
     run_pipeline(trades_path, config_path=args.config)
