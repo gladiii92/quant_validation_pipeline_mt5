@@ -22,6 +22,7 @@ from validation.kelly import estimate_kelly_from_trades
 from vix_loader import load_vix_regimes
 from validation.regime_alignment import analyze_vix_regime_alignment
 from validation.monte_carlo import run_monte_carlo_on_trades
+from validation.walk_forward import run_walk_forward_analysis
 
 from validation.multi_asset_summary import load_and_score_optimizer
 
@@ -163,7 +164,27 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml"):
 
 
 
-    # === SCHRITT 9: Monte Carlo ===
+    # === SCHRITT 9: Walk-Forward / OOS-Analyse ===
+    logger.info("\n[STEP 9] Running walk-forward analysis on trades...")
+    wf_config = config.get("walk_forward", {})
+    wf_results = run_walk_forward_analysis(
+        trades_df=trades_df,
+        initial_capital=initial_capital,
+        train_days=wf_config.get("train_window", 252),
+        test_days=wf_config.get("test_window", 63),
+        step_days=wf_config.get("step_size", 21),
+    )
+    logger.info(
+        "✅ Walk-forward finished: n_windows=%d, oos_sharpe=%.2f, oos_profit_factor=%.2f, oos_max_dd=%.2f%%",
+        wf_results["n_windows"],
+        wf_results["oos_sharpe"],
+        wf_results["oos_profit_factor"],
+        wf_results["oos_max_dd"] * 100,
+    )
+
+
+
+    # === SCHRITT 10: Monte Carlo ===
     logger.info("\n[STEP 8] Running Monte Carlo on trade sequence...")
     mc_results = run_monte_carlo_on_trades(
         trades_df=trades_df,
@@ -197,7 +218,7 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml"):
 
 
 
-    # === SCHRITT 10: Equity-Curve-Plot ===
+    # === SCHRITT 11: Equity-Curve-Plot ===
     logger.info("[PLOT] Saving equity curve...")
     eq = trades_df["pnl"].cumsum() + initial_capital
     plt.figure(figsize=(8, 4))
@@ -212,7 +233,7 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml"):
 
 
 
-    # === SCHRITT 11: VIX-Regime-Sharpe-Plot ===
+    # === SCHRITT 12: VIX-Regime-Sharpe-Plot ===
     logger.info("[PLOT] Saving VIX regime Sharpe barplot...")
     vix_stats = vix_alignment["regime_stats"]
     names = list(vix_stats.keys())
@@ -231,7 +252,7 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml"):
 
 
 
-    # === SCHRITT 12: Decision Gate ===
+    # === SCHRITT 13: Decision Gate ===
     logger.info("\n[STEP 11] Running Decision Gate...")
     gate = DecisionGate(config_path)
     gate_metrics = {
@@ -265,6 +286,7 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml"):
         "kelly": kelly_info,
         "vix_alignment": vix_alignment,
         "mc_results": mc_results,
+        "walk_forward": wf_results,
         "gate_result": {
             "status": result.status.value,
             "confidence": result.confidence,
@@ -272,6 +294,7 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml"):
             "violated_criteria": result.violated_criteria,
         },
     }
+
     summary_path = f"reports/{Path(trades_csv_path).stem}_summary.json"
     with open(summary_path, "w", encoding="utf-8") as jf:
         json.dump(summary, jf, default=str, indent=2)
@@ -330,6 +353,23 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml"):
         )
     vix_df = pd.DataFrame(vix_rows)
 
+    # Walk-Forward Tabelle
+    wf_rows = []
+    for w in wf_results["window_metrics"]:
+        wf_rows.append(
+            {
+                "Window": w["window_id"],
+                "Train": f"{w['train_start']} → {w['train_end']}",
+                "Test": f"{w['test_start']} → {w['test_end']}",
+                "Trades": w["test_n_trades"],
+                "Sharpe": f"{w['test_sharpe']:.2f}",
+                "PF": f"{w['test_profit_factor']:.2f}",
+                "MaxDD": f"{w['test_max_dd']:.2%}",
+                "Return": f"{w['test_total_return']:.2%}",
+            }
+        )
+    wf_df = pd.DataFrame(wf_rows)
+
     with open(report_path, "w", encoding="utf-8") as f:
         f.write("QUANT VALIDATION PIPELINE REPORT\n")
         f.write("=" * 60 + "\n\n")
@@ -349,6 +389,12 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml"):
 
         f.write("VIX REGIME PERFORMANCE:\n")
         f.write(vix_df.to_markdown(index=False) + "\n\n")
+
+        f.write("WALK-FORWARD OOS WINDOWS:\n")
+        if not wf_df.empty:
+            f.write(wf_df.to_markdown(index=False) + "\n\n")
+        else:
+            f.write("  (no walk-forward windows)\n\n")
 
         f.write("MONTE CARLO SUMMARY:\n")
         f.write(
