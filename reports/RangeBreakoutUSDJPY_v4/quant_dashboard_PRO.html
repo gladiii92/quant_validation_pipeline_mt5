@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🏆 RangeBreakoutUSDJPY_v4 | Senior Quant Validation Report</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <style>
+        :root { 
+            --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --success-gradient: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+            --warning-gradient: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+        body { 
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        .header-hero { 
+            background: var(--primary-gradient); 
+            color: white; 
+            border-radius: 0 0 30px 30px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+        }
+        .metric-card { 
+            border: none; 
+            border-radius: 20px; 
+            box-shadow: 0 15px 35px rgba(0,0,0,0.1);
+            transition: all 0.3s ease;
+            height: 100%;
+        }
+        .metric-card:hover { transform: translateY(-8px); box-shadow: 0 25px 50px rgba(0,0,0,0.2); }
+        .plot-container { 
+            background: white; 
+            border-radius: 20px; 
+            padding: 25px; 
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            border: 1px solid rgba(255,255,255,0.5);
+        }
+        .nav-tabs { 
+            border: none; 
+            border-radius: 20px; 
+            background: white; 
+            box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        .nav-tabs .nav-link { 
+            border-radius: 0; 
+            border: none; 
+            font-weight: 600; 
+            color: #6c757d;
+            padding: 15px 25px;
+        }
+        .nav-tabs .nav-link.active { 
+            background: var(--primary-gradient) !important; 
+            color: white !important;
+            border: none;
+        }
+        .section-title { 
+            font-size: 2rem; 
+            font-weight: 800; 
+            background: var(--primary-gradient); 
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .status-badge { 
+            font-size: 1.2rem; 
+            padding: 12px 24px; 
+            border-radius: 50px;
+        }
+        footer { 
+            background: rgba(0,0,0,0.8); 
+            backdrop-filter: blur(10px);
+        }
+    </style>
+</head>
+<body>
+    <!-- 🚀 HEADER -->
+    <section class="header-hero py-5">
+        <div class="container">
+            <div class="row align-items-center">
+                <div class="col-lg-8">
+                    <h1 class="display-3 fw-bold mb-4">
+                        <i class="bi bi-rocket-takeoff-fill me-3"></i>
+                        RangeBreakoutUSDJPY_v4
+                    </h1>
+                    <div class="row g-3 mb-4">
+                        <div class="col-auto">
+                            <span class="badge bg-success status-badge fs-4">
+                                Sharpe <strong>2.79</strong>
+                            </span>
+                        </div>
+                        <div class="col-auto">
+                            <span class="badge bg-success status-badge fs-4">
+                                Return <strong>35.4%</strong>
+                            </span>
+                        </div>
+                        <div class="col-auto">
+                            <span class="badge bg-info status-badge fs-4">
+                                Trades <strong>354</strong>
+                            </span>
+                        </div>
+                        <div class="col-auto">
+                            <span class="badge bg-success text-white status-badge fs-4">
+                                LIVE_ELIGIBLE | 1%
+                            </span>
+                        </div>
+                    </div>
+                    <p class="lead mb-0 opacity-75">Win Rate: <strong>51.1%</strong> | 
+                    Max Drawdown: <strong>3.9%</strong></p>
+                </div>
+                <div class="col-lg-4 text-center">
+                    
+    <div class="plot-container mb-4">
+        <img src="equity.png" class="img-fluid rounded shadow-lg" 
+             style="height: 350px; width: 100%; object-fit: contain;" 
+             alt="Equity Curve" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+        <div class="alert alert-light text-center d-none" style="margin-top: 10px;">
+            <i class="bi bi-image"></i> Equity Curve nicht verfügbar
+        </div>
+    </div>
+    
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <div class="container-fluid pb-5">
+        <!-- 📊 EXECUTIVE SUMMARY CARDS -->
+        <div class="row g-4 mb-5">
+            <div class="col-xl-3 col-lg-6">
+                <div class="card metric-card text-white bg-success">
+                    <div class="card-body text-center">
+                        <i class="bi bi-check-circle-fill display-3 mb-3 opacity-75"></i>
+                        <h2 class="display-5 fw-bold">LIVE_ELIGIBLE</h2>
+                        <p class="h5 mb-3">Live Trading</p>
+                        <div class="badge fs-3 px-4 py-3 w-100 bg-success text-white">
+                            1% Confidence
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-xl-3 col-lg-6">
+                <div class="card metric-card text-white" style="background: var(--primary-gradient);">
+                    <div class="card-body text-center">
+                        <i class="bi bi-speedometer2 display-3 mb-3 opacity-75"></i>
+                        <h2 class="display-5 fw-bold">2.79</h2>
+                        <p class="h5 mb-3">Sharpe Ratio</p>
+                        <div class="badge fs-3 px-4 py-3 w-100 bg-light text-dark">
+                            ELITE
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-xl-3 col-lg-6">
+                <div class="card metric-card text-white bg-success">
+                    <div class="card-body text-center">
+                        <i class="bi bi-graph-up display-3 mb-3 opacity-75"></i>
+                        <h2 class="display-5 fw-bold">100%</h2>
+                        <p class="h5 mb-3">Monte Carlo Success</p>
+                        <div class="badge fs-3 px-4 py-3 w-100 bg-light text-dark">
+                            1,000 Simulations
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-xl-3 col-lg-6">
+                <div class="card metric-card text-white bg-info">
+                    <div class="card-body text-center">
+                        <i class="bi bi-arrow-repeat display-3 mb-3 opacity-75"></i>
+                        <h2 class="display-5 fw-bold">3.29</h2>
+                        <p class="h5 mb-3">OOS Sharpe (10 Windows)</p>
+                        <div class="badge fs-3 px-4 py-3 w-100 bg-light text-dark">
+                            Profit Factor 2.01
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 📈 NAVIGATION TABS -->
+        <ul class="nav nav-tabs mb-5 justify-content-center" id="quantTabs" role="tablist">
+            <li class="nav-item"><button class="nav-link active px-5 py-3 fs-5 fw-bold" data-bs-toggle="tab" data-bs-target="#overview">
+                <i class="bi bi-house-door me-2"></i>Overview
+            </button></li>
+            <li class="nav-item"><button class="nav-link px-5 py-3 fs-5 fw-bold" data-bs-toggle="tab" data-bs-target="#montecarlo">
+                <i class="bi bi-shuffle me-2"></i>Monte Carlo
+            </button></li>
+            <li class="nav-item"><button class="nav-link px-5 py-3 fs-5 fw-bold" data-bs-toggle="tab" data-bs-target="#performance">
+                <i class="bi bi-bar-chart-line me-2"></i>Performance
+            </button></li>
+            <li class="nav-item"><button class="nav-link px-5 py-3 fs-5 fw-bold" data-bs-toggle="tab" data-bs-target="#risk">
+                <i class="bi bi-shield-shaded me-2"></i>Risk Analysis
+            </button></li>
+            <li class="nav-item"><button class="nav-link px-5 py-3 fs-5 fw-bold" data-bs-toggle="tab" data-bs-target="#kelly">
+                <i class="bi bi-graph-up-arrow me-2"></i>Kelly Criterion
+            </button></li>
+        </ul>
+
+        <div class="tab-content" id="quantTabsContent">
+            <!-- OVERVIEW -->
+            <div class="tab-pane fade show active p-5 bg-white rounded-4 shadow-lg" id="overview" role="tabpanel">
+                <h2 class="section-title mb-5 text-center">📊 Executive Summary</h2>
+                <div class="row g-4">
+                    <div class="col-lg-6">
+                        
+    <div class="plot-container mb-4">
+        <img src="equity.png" class="img-fluid rounded shadow-lg" 
+             style="height: 450px; width: 100%; object-fit: contain;" 
+             alt="Equity Curve & Drawdown" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+        <div class="alert alert-light text-center d-none" style="margin-top: 10px;">
+            <i class="bi bi-image"></i> Equity Curve & Drawdown nicht verfügbar
+        </div>
+    </div>
+    
+                        
+    <div class="plot-container mb-4">
+        <img src="mc_paths.png" class="img-fluid rounded shadow-lg" 
+             style="height: 400px; width: 100%; object-fit: contain;" 
+             alt="Monte Carlo Paths" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+        <div class="alert alert-light text-center d-none" style="margin-top: 10px;">
+            <i class="bi bi-image"></i> Monte Carlo Paths nicht verfügbar
+        </div>
+    </div>
+    
+                    </div>
+                    <div class="col-lg-6">
+                        
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-gradient-primary text-white">
+            <h6 class="mb-0 fw-bold"><i class="bi bi-table me-2"></i>🎯 Core Performance Metrics</h6>
+        </div>
+        <div class="card-body p-0">
+            <style type="text/css">
+</style>
+<table id="T_60308">
+  <thead>
+    <tr>
+      <th class="blank level0" >&nbsp;</th>
+      <th id="T_60308_level0_col0" class="col_heading level0 col0" >total_return</th>
+      <th id="T_60308_level0_col1" class="col_heading level0 col1" >total_pnl</th>
+      <th id="T_60308_level0_col2" class="col_heading level0 col2" >total_trades</th>
+      <th id="T_60308_level0_col3" class="col_heading level0 col3" >win_rate</th>
+      <th id="T_60308_level0_col4" class="col_heading level0 col4" >sharpe_ratio</th>
+      <th id="T_60308_level0_col5" class="col_heading level0 col5" >sortino_ratio</th>
+      <th id="T_60308_level0_col6" class="col_heading level0 col6" >max_drawdown</th>
+      <th id="T_60308_level0_col7" class="col_heading level0 col7" >profit_factor</th>
+      <th id="T_60308_level0_col8" class="col_heading level0 col8" >reward_risk</th>
+      <th id="T_60308_level0_col9" class="col_heading level0 col9" >avg_win</th>
+      <th id="T_60308_level0_col10" class="col_heading level0 col10" >avg_loss</th>
+      <th id="T_60308_level0_col11" class="col_heading level0 col11" >strategy_name</th>
+      <th id="T_60308_level0_col12" class="col_heading level0 col12" >date_range</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th id="T_60308_level0_row0" class="row_heading level0 row0" >0</th>
+      <td id="T_60308_row0_col0" class="data row0 col0" >35.4%</td>
+      <td id="T_60308_row0_col1" class="data row0 col1" >35362.020000</td>
+      <td id="T_60308_row0_col2" class="data row0 col2" >354</td>
+      <td id="T_60308_row0_col3" class="data row0 col3" >51.1%</td>
+      <td id="T_60308_row0_col4" class="data row0 col4" >2.79</td>
+      <td id="T_60308_row0_col5" class="data row0 col5" >11.175000</td>
+      <td id="T_60308_row0_col6" class="data row0 col6" >3.9%</td>
+      <td id="T_60308_row0_col7" class="data row0 col7" >1.72</td>
+      <td id="T_60308_row0_col8" class="data row0 col8" >1.646000</td>
+      <td id="T_60308_row0_col9" class="data row0 col9" >465.895000</td>
+      <td id="T_60308_row0_col10" class="data row0 col10" >283.035000</td>
+      <td id="T_60308_row0_col11" class="data row0 col11" >RangeBreakoutUSDJPY_v4</td>
+      <td id="T_60308_row0_col12" class="data row0 col12" >['2024-02-01 07:00:00', '2025-04-25 21:20:00']</td>
+    </tr>
+  </tbody>
+</table>
+
+        </div>
+    </div>
+    
+                        <div class="alert alert-success shadow">
+                            <h5><i class="bi bi-check-circle-fill me-2 text-success"></i>FINAL JUDGMENT</h5>
+                            <p class="fs-5 fw-bold text-success mb-1">LIVE_ELIGIBLE (1% Confidence)</p>
+                            <hr>
+                            <p class="mb-0"><strong>Reason:</strong> ⚠️ Minor violation: Multi-Asset 27.3% < 75.0%</p>
+                            <div class="badge bg-danger mt-1">Multi-Asset 27.3% < 75.0%</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- MONTE CARLO -->
+            <div class="tab-pane fade p-5 bg-white rounded-4 shadow-lg" id="montecarlo" role="tabpanel">
+                <h2 class="section-title mb-5 text-center">🎲 Monte Carlo Simulation (1,000 Paths)</h2>
+                <div class="row g-4">
+                    <div class="col-lg-8">
+    <div class="plot-container mb-4">
+        <img src="mc_paths.png" class="img-fluid rounded shadow-lg" 
+             style="height: 450px; width: 100%; object-fit: contain;" 
+             alt="100 Monte Carlo Equity Paths" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+        <div class="alert alert-light text-center d-none" style="margin-top: 10px;">
+            <i class="bi bi-image"></i> 100 Monte Carlo Equity Paths nicht verfügbar
+        </div>
+    </div>
+    </div>
+                    <div class="col-lg-4">
+                        
+    <div class="plot-container mb-4">
+        <img src="mc_returns.png" class="img-fluid rounded shadow-lg" 
+             style="height: 450px; width: 100%; object-fit: contain;" 
+             alt="Return Distribution" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+        <div class="alert alert-light text-center d-none" style="margin-top: 10px;">
+            <i class="bi bi-image"></i> Return Distribution nicht verfügbar
+        </div>
+    </div>
+    
+                        <div class="alert alert-info shadow">
+                            <h6><i class="bi bi-star-fill me-2"></i>Key Results:</h6>
+                            <ul class="list-unstyled fs-5">
+                                <li><strong>Success Rate:</strong> 100.0%</li>
+                                <li><strong>Median Return:</strong> 35.8%</li>
+                                <li><strong>5th Percentile:</strong> 19.2%</li>
+                                <li><strong>95th Max DD:</strong> 6.4%</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- PERFORMANCE -->
+            <div class="tab-pane fade p-5 bg-white rounded-4 shadow-lg" id="performance" role="tabpanel">
+                <h2 class="section-title mb-5 text-center">📈 Performance Attribution</h2>
+                <div class="row g-4">
+                    <div class="col-lg-6">
+    <div class="plot-container mb-4">
+        <img src="walk_forward_sharpe.png" class="img-fluid rounded shadow-lg" 
+             style="height: 450px; width: 100%; object-fit: contain;" 
+             alt="Walk Forward Sharpe (10 Windows)" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+        <div class="alert alert-light text-center d-none" style="margin-top: 10px;">
+            <i class="bi bi-image"></i> Walk Forward Sharpe (10 Windows) nicht verfügbar
+        </div>
+    </div>
+    </div>
+                    <div class="col-lg-6">
+    <div class="plot-container mb-4">
+        <img src="vix_regime_sharpe.png" class="img-fluid rounded shadow-lg" 
+             style="height: 450px; width: 100%; object-fit: contain;" 
+             alt="VIX Regime Performance" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+        <div class="alert alert-light text-center d-none" style="margin-top: 10px;">
+            <i class="bi bi-image"></i> VIX Regime Performance nicht verfügbar
+        </div>
+    </div>
+    </div>
+                </div>
+                <div class="row g-4 mt-4">
+                    <div class="col-md-6">
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-gradient-primary text-white">
+            <h6 class="mb-0 fw-bold"><i class="bi bi-table me-2"></i>Walk Forward OOS (Top 5)</h6>
+        </div>
+        <div class="card-body p-0">
+            <style type="text/css">
+</style>
+<table id="T_c30cc">
+  <thead>
+    <tr>
+      <th class="blank level0" >&nbsp;</th>
+      <th id="T_c30cc_level0_col0" class="col_heading level0 col0" >window_id</th>
+      <th id="T_c30cc_level0_col1" class="col_heading level0 col1" >train_start</th>
+      <th id="T_c30cc_level0_col2" class="col_heading level0 col2" >train_end</th>
+      <th id="T_c30cc_level0_col3" class="col_heading level0 col3" >test_start</th>
+      <th id="T_c30cc_level0_col4" class="col_heading level0 col4" >test_end</th>
+      <th id="T_c30cc_level0_col5" class="col_heading level0 col5" >test_n_trades</th>
+      <th id="T_c30cc_level0_col6" class="col_heading level0 col6" >test_sharpe</th>
+      <th id="T_c30cc_level0_col7" class="col_heading level0 col7" >test_profit_factor</th>
+      <th id="T_c30cc_level0_col8" class="col_heading level0 col8" >test_max_dd</th>
+      <th id="T_c30cc_level0_col9" class="col_heading level0 col9" >test_total_return</th>
+      <th id="T_c30cc_level0_col10" class="col_heading level0 col10" >test_indices</th>
+      <th id="T_c30cc_level0_col11" class="col_heading level0 col11" >test_kelly_full</th>
+      <th id="T_c30cc_level0_col12" class="col_heading level0 col12" >test_kelly_half</th>
+      <th id="T_c30cc_level0_col13" class="col_heading level0 col13" >test_kelly_quarter</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th id="T_c30cc_level0_row0" class="row_heading level0 row0" >0</th>
+      <td id="T_c30cc_row0_col0" class="data row0 col0" >1</td>
+      <td id="T_c30cc_row0_col1" class="data row0 col1" >2024-02-01 07:00:00</td>
+      <td id="T_c30cc_row0_col2" class="data row0 col2" >2024-10-09 07:00:00</td>
+      <td id="T_c30cc_row0_col3" class="data row0 col3" >2024-10-10 07:00:00</td>
+      <td id="T_c30cc_row0_col4" class="data row0 col4" >2024-12-11 21:20:00</td>
+      <td id="T_c30cc_row0_col5" class="data row0 col5" >57</td>
+      <td id="T_c30cc_row0_col6" class="data row0 col6" >0.375000</td>
+      <td id="T_c30cc_row0_col7" class="data row0 col7" >1.057000</td>
+      <td id="T_c30cc_row0_col8" class="data row0 col8" >0.034000</td>
+      <td id="T_c30cc_row0_col9" class="data row0 col9" >0.005000</td>
+      <td id="T_c30cc_row0_col10" class="data row0 col10" >[203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 223, 224, 225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 235, 236, 237, 238, 239, 240, 241, 242, 243, 244, 245, 246, 247, 248, 249, 250, 251, 252, 253, 254, 255, 256, 257, 258, 259]</td>
+      <td id="T_c30cc_row0_col11" class="data row0 col11" >0.027000</td>
+      <td id="T_c30cc_row0_col12" class="data row0 col12" >0.013000</td>
+      <td id="T_c30cc_row0_col13" class="data row0 col13" >0.007000</td>
+    </tr>
+    <tr>
+      <th id="T_c30cc_level0_row1" class="row_heading level0 row1" >1</th>
+      <td id="T_c30cc_row1_col0" class="data row1 col0" >2</td>
+      <td id="T_c30cc_row1_col1" class="data row1 col1" >2024-02-22 07:00:00</td>
+      <td id="T_c30cc_row1_col2" class="data row1 col2" >2024-10-30 16:41:01</td>
+      <td id="T_c30cc_row1_col3" class="data row1 col3" >2024-10-31 07:00:00</td>
+      <td id="T_c30cc_row1_col4" class="data row1 col4" >2024-12-30 13:05:24</td>
+      <td id="T_c30cc_row1_col5" class="data row1 col5" >53</td>
+      <td id="T_c30cc_row1_col6" class="data row1 col6" >0.178000</td>
+      <td id="T_c30cc_row1_col7" class="data row1 col7" >1.030000</td>
+      <td id="T_c30cc_row1_col8" class="data row1 col8" >0.039000</td>
+      <td id="T_c30cc_row1_col9" class="data row1 col9" >0.003000</td>
+      <td id="T_c30cc_row1_col10" class="data row1 col10" >[223, 224, 225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 235, 236, 237, 238, 239, 240, 241, 242, 243, 244, 245, 246, 247, 248, 249, 250, 251, 252, 253, 254, 255, 256, 257, 258, 259, 260, 261, 262, 263, 264, 265, 266, 267, 268, 269, 270, 271, 272, 273, 274, 275]</td>
+      <td id="T_c30cc_row1_col11" class="data row1 col11" >0.012000</td>
+      <td id="T_c30cc_row1_col12" class="data row1 col12" >0.006000</td>
+      <td id="T_c30cc_row1_col13" class="data row1 col13" >0.003000</td>
+    </tr>
+    <tr>
+      <th id="T_c30cc_level0_row2" class="row_heading level0 row2" >2</th>
+      <td id="T_c30cc_row2_col0" class="data row2 col0" >3</td>
+      <td id="T_c30cc_row2_col1" class="data row2 col1" >2024-03-14 07:00:00</td>
+      <td id="T_c30cc_row2_col2" class="data row2 col2" >2024-11-20 07:00:00</td>
+      <td id="T_c30cc_row2_col3" class="data row2 col3" >2024-11-21 07:00:00</td>
+      <td id="T_c30cc_row2_col4" class="data row2 col4" >2024-12-30 13:05:24</td>
+      <td id="T_c30cc_row2_col5" class="data row2 col5" >36</td>
+      <td id="T_c30cc_row2_col6" class="data row2 col6" >2.071000</td>
+      <td id="T_c30cc_row2_col7" class="data row2 col7" >1.435000</td>
+      <td id="T_c30cc_row2_col8" class="data row2 col8" >0.020000</td>
+      <td id="T_c30cc_row2_col9" class="data row2 col9" >0.021000</td>
+      <td id="T_c30cc_row2_col10" class="data row2 col10" >[240, 241, 242, 243, 244, 245, 246, 247, 248, 249, 250, 251, 252, 253, 254, 255, 256, 257, 258, 259, 260, 261, 262, 263, 264, 265, 266, 267, 268, 269, 270, 271, 272, 273, 274, 275]</td>
+      <td id="T_c30cc_row2_col11" class="data row2 col11" >0.143000</td>
+      <td id="T_c30cc_row2_col12" class="data row2 col12" >0.072000</td>
+      <td id="T_c30cc_row2_col13" class="data row2 col13" >0.036000</td>
+    </tr>
+    <tr>
+      <th id="T_c30cc_level0_row3" class="row_heading level0 row3" >3</th>
+      <td id="T_c30cc_row3_col0" class="data row3 col0" >4</td>
+      <td id="T_c30cc_row3_col1" class="data row3 col1" >2024-04-04 07:00:00</td>
+      <td id="T_c30cc_row3_col2" class="data row3 col2" >2024-12-11 21:20:00</td>
+      <td id="T_c30cc_row3_col3" class="data row3 col3" >2024-12-12 07:00:00</td>
+      <td id="T_c30cc_row3_col4" class="data row3 col4" >2025-02-12 07:00:00</td>
+      <td id="T_c30cc_row3_col5" class="data row3 col5" >26</td>
+      <td id="T_c30cc_row3_col6" class="data row3 col6" >4.346000</td>
+      <td id="T_c30cc_row3_col7" class="data row3 col7" >2.486000</td>
+      <td id="T_c30cc_row3_col8" class="data row3 col8" >0.011000</td>
+      <td id="T_c30cc_row3_col9" class="data row3 col9" >0.039000</td>
+      <td id="T_c30cc_row3_col10" class="data row3 col10" >[260, 261, 262, 263, 264, 265, 266, 267, 268, 269, 270, 271, 272, 273, 274, 275, 276, 277, 278, 279, 280, 281, 282, 283, 284, 285]</td>
+      <td id="T_c30cc_row3_col11" class="data row3 col11" >0.322000</td>
+      <td id="T_c30cc_row3_col12" class="data row3 col12" >0.161000</td>
+      <td id="T_c30cc_row3_col13" class="data row3 col13" >0.080000</td>
+    </tr>
+    <tr>
+      <th id="T_c30cc_level0_row4" class="row_heading level0 row4" >4</th>
+      <td id="T_c30cc_row4_col0" class="data row4 col0" >5</td>
+      <td id="T_c30cc_row4_col1" class="data row4 col1" >2024-04-25 07:00:00</td>
+      <td id="T_c30cc_row4_col2" class="data row4 col2" >2024-12-30 13:05:24</td>
+      <td id="T_c30cc_row4_col3" class="data row4 col3" >2025-02-03 07:00:00</td>
+      <td id="T_c30cc_row4_col4" class="data row4 col4" >2025-03-05 21:20:00</td>
+      <td id="T_c30cc_row4_col5" class="data row4 col5" >29</td>
+      <td id="T_c30cc_row4_col6" class="data row4 col6" >4.473000</td>
+      <td id="T_c30cc_row4_col7" class="data row4 col7" >2.113000</td>
+      <td id="T_c30cc_row4_col8" class="data row4 col8" >0.010000</td>
+      <td id="T_c30cc_row4_col9" class="data row4 col9" >0.038000</td>
+      <td id="T_c30cc_row4_col10" class="data row4 col10" >[276, 277, 278, 279, 280, 281, 282, 283, 284, 285, 286, 287, 288, 289, 290, 291, 292, 293, 294, 295, 296, 297, 298, 299, 300, 301, 302, 303, 304]</td>
+      <td id="T_c30cc_row4_col11" class="data row4 col11" >0.327000</td>
+      <td id="T_c30cc_row4_col12" class="data row4 col12" >0.163000</td>
+      <td id="T_c30cc_row4_col13" class="data row4 col13" >0.082000</td>
+    </tr>
+  </tbody>
+</table>
+
+        </div>
+    </div>
+    </div>
+                    <div class="col-md-6">
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-gradient-primary text-white">
+            <h6 class="mb-0 fw-bold"><i class="bi bi-table me-2"></i>VIX Regime Breakdown</h6>
+        </div>
+        <div class="card-body p-0">
+            <style type="text/css">
+</style>
+<table id="T_b2aee">
+  <thead>
+    <tr>
+      <th class="blank level0" >&nbsp;</th>
+      <th id="T_b2aee_level0_col0" class="col_heading level0 col0" >total_return</th>
+      <th id="T_b2aee_level0_col1" class="col_heading level0 col1" >total_pnl</th>
+      <th id="T_b2aee_level0_col2" class="col_heading level0 col2" >total_trades</th>
+      <th id="T_b2aee_level0_col3" class="col_heading level0 col3" >win_rate</th>
+      <th id="T_b2aee_level0_col4" class="col_heading level0 col4" >sharpe_ratio</th>
+      <th id="T_b2aee_level0_col5" class="col_heading level0 col5" >sortino_ratio</th>
+      <th id="T_b2aee_level0_col6" class="col_heading level0 col6" >max_drawdown</th>
+      <th id="T_b2aee_level0_col7" class="col_heading level0 col7" >profit_factor</th>
+      <th id="T_b2aee_level0_col8" class="col_heading level0 col8" >reward_risk</th>
+      <th id="T_b2aee_level0_col9" class="col_heading level0 col9" >avg_win</th>
+      <th id="T_b2aee_level0_col10" class="col_heading level0 col10" >avg_loss</th>
+      <th id="T_b2aee_level0_col11" class="col_heading level0 col11" >n_trades</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th id="T_b2aee_level0_row0" class="row_heading level0 row0" >0</th>
+      <td id="T_b2aee_row0_col0" class="data row0 col0" >4.5%</td>
+      <td id="T_b2aee_row0_col1" class="data row0 col1" >4533.290000</td>
+      <td id="T_b2aee_row0_col2" class="data row0 col2" >15</td>
+      <td id="T_b2aee_row0_col3" class="data row0 col3" >40.0%</td>
+      <td id="T_b2aee_row0_col4" class="data row0 col4" >4.28</td>
+      <td id="T_b2aee_row0_col5" class="data row0 col5" >28.977000</td>
+      <td id="T_b2aee_row0_col6" class="data row0 col6" >0.6%</td>
+      <td id="T_b2aee_row0_col7" class="data row0 col7" >3.36</td>
+      <td id="T_b2aee_row0_col8" class="data row0 col8" >5.035000</td>
+      <td id="T_b2aee_row0_col9" class="data row0 col9" >1076.163000</td>
+      <td id="T_b2aee_row0_col10" class="data row0 col10" >213.743000</td>
+      <td id="T_b2aee_row0_col11" class="data row0 col11" >15</td>
+    </tr>
+    <tr>
+      <th id="T_b2aee_level0_row1" class="row_heading level0 row1" >1</th>
+      <td id="T_b2aee_row1_col0" class="data row1 col0" >15.9%</td>
+      <td id="T_b2aee_row1_col1" class="data row1 col1" >15853.730000</td>
+      <td id="T_b2aee_row1_col2" class="data row1 col2" >156</td>
+      <td id="T_b2aee_row1_col3" class="data row1 col3" >49.4%</td>
+      <td id="T_b2aee_row1_col4" class="data row1 col4" >2.79</td>
+      <td id="T_b2aee_row1_col5" class="data row1 col5" >10.827000</td>
+      <td id="T_b2aee_row1_col6" class="data row1 col6" >2.2%</td>
+      <td id="T_b2aee_row1_col7" class="data row1 col7" >1.76</td>
+      <td id="T_b2aee_row1_col8" class="data row1 col8" >1.805000</td>
+      <td id="T_b2aee_row1_col9" class="data row1 col9" >476.983000</td>
+      <td id="T_b2aee_row1_col10" class="data row1 col10" >264.227000</td>
+      <td id="T_b2aee_row1_col11" class="data row1 col11" >156</td>
+    </tr>
+    <tr>
+      <th id="T_b2aee_level0_row2" class="row_heading level0 row2" >2</th>
+      <td id="T_b2aee_row2_col0" class="data row2 col0" >13.4%</td>
+      <td id="T_b2aee_row2_col1" class="data row2 col1" >13366.870000</td>
+      <td id="T_b2aee_row2_col2" class="data row2 col2" >161</td>
+      <td id="T_b2aee_row2_col3" class="data row2 col3" >52.8%</td>
+      <td id="T_b2aee_row2_col4" class="data row2 col4" >2.69</td>
+      <td id="T_b2aee_row2_col5" class="data row2 col5" >10.074000</td>
+      <td id="T_b2aee_row2_col6" class="data row2 col6" >2.4%</td>
+      <td id="T_b2aee_row2_col7" class="data row2 col7" >1.58</td>
+      <td id="T_b2aee_row2_col8" class="data row2 col8" >1.413000</td>
+      <td id="T_b2aee_row2_col9" class="data row2 col9" >428.110000</td>
+      <td id="T_b2aee_row2_col10" class="data row2 col10" >302.928000</td>
+      <td id="T_b2aee_row2_col11" class="data row2 col11" >161</td>
+    </tr>
+  </tbody>
+</table>
+
+        </div>
+    </div>
+    </div>
+                </div>
+            </div>
+
+            <!-- RISK -->
+            <div class="tab-pane fade p-5 bg-white rounded-4 shadow-lg" id="risk" role="tabpanel">
+                <h2 class="section-title mb-5 text-center">🛡️ Risk & Diagnostics</h2>
+                <div class="row g-4">
+                    <div class="col-lg-6">
+                        
+    <div class="plot-container mb-4">
+        <img src="drawdown_analysis.png" class="img-fluid rounded shadow-lg" 
+             style="height: 450px; width: 100%; object-fit: contain;" 
+             alt="Drawdown Analysis" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+        <div class="alert alert-light text-center d-none" style="margin-top: 10px;">
+            <i class="bi bi-image"></i> Drawdown Analysis nicht verfügbar
+        </div>
+    </div>
+    
+                        
+    <div class="plot-container mb-4">
+        <img src="pnl_distribution.png" class="img-fluid rounded shadow-lg" 
+             style="height: 450px; width: 100%; object-fit: contain;" 
+             alt="PnL Distribution & Fat Tails" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+        <div class="alert alert-light text-center d-none" style="margin-top: 10px;">
+            <i class="bi bi-image"></i> PnL Distribution & Fat Tails nicht verfügbar
+        </div>
+    </div>
+    
+                    </div>
+                    <div class="col-lg-6">
+                        
+    <div class="plot-container mb-4">
+        <img src="multi_asset_sharpe.png" class="img-fluid rounded shadow-lg" 
+             style="height: 450px; width: 100%; object-fit: contain;" 
+             alt="Multi-Asset Sharpe (11 Symbols)" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+        <div class="alert alert-light text-center d-none" style="margin-top: 10px;">
+            <i class="bi bi-image"></i> Multi-Asset Sharpe (11 Symbols) nicht verfügbar
+        </div>
+    </div>
+    
+                        <div class="alert alert-warning shadow mt-4">
+                            <h6><i class="bi bi-exclamation-triangle me-2"></i>ATTENTION</h6>
+                            <p class="fs-6 mb-2"><strong>Multi-Asset Hit Rate:</strong> 27.3% (3/11 Sharpe>1.0)</p>
+                            <p class="mb-0">⚠️ Below 75% threshold → Review required</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- KELLY -->
+            <div class="tab-pane fade p-5 bg-white rounded-4 shadow-lg" id="kelly" role="tabpanel">
+                <h2 class="section-title mb-5 text-center">💰 Kelly Criterion Optimization</h2>
+                <div class="row g-4">
+                    <div class="col-lg-8">
+    <div class="plot-container mb-4">
+        <img src="kelly_frontier.png" class="img-fluid rounded shadow-lg" 
+             style="height: 450px; width: 100%; object-fit: contain;" 
+             alt="Kelly Growth Frontier" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+        <div class="alert alert-light text-center d-none" style="margin-top: 10px;">
+            <i class="bi bi-image"></i> Kelly Growth Frontier nicht verfügbar
+        </div>
+    </div>
+    </div>
+                    <div class="col-lg-4">
+                        <div class="alert alert-success shadow h-100">
+                            <h5><i class="bi bi-graph-up-arrow me-2"></i>Kelly Recommendations</h5>
+                            <div class="row text-center">
+                                <div class="col-4"><div class="badge bg-danger fs-5 p-3 mb-2 w-100">Full<br>21.4%</div></div>
+                                <div class="col-4"><div class="badge bg-warning fs-5 p-3 mb-2 w-100">½ Kelly<br>10.7%</div></div>
+                                <div class="col-4"><div class="badge bg-success fs-5 p-3 mb-2 w-100">¼ Kelly<br>5.4%</div></div>
+                            </div>
+                            <hr>
+                            <p class="mb-1"><strong>OOS Kelly:</strong> 22.4%</p>
+                            <p class="mb-0"><em>Winrate: 51.1% | Payoff: 1.65</em></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 🎯 FOOTER -->
+    <footer class="text-white py-5 mt-5">
+        <div class="container text-center">
+            <div class="row">
+                <div class="col-md-4">
+                    <h5><i class="bi bi-clock-history me-2"></i>Generated</h5>
+                    <p class="mb-0">2025-12-19 16:11:22 CET</p>
+                </div>
+                <div class="col-md-4">
+                    <h5><i class="bi bi-award me-2"></i>Status</h5>
+                    <span class="badge fs-3 px-5 py-3 bg-success text-white">LIVE_ELIGIBLE</span>
+                </div>
+                <div class="col-md-4">
+                    <h5><i class="bi bi-star-fill me-2"></i>Confidence</h5>
+                    <div class="display-4 fw-bold">1%</div>
+                </div>
+            </div>
+            <hr class="my-4 opacity-25">
+            <p class="mb-0 opacity-75">
+                <strong>RangeBreakoutUSDJPY_v4:</strong> 
+                ✅ LIVE_ELIGIBLE (Elite Sharpe 2.79!)
+            </p>
+        </div>
+    </footer>
+</body>
+</html>

@@ -394,6 +394,160 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml") -> None
     with open(summary_path, "w", encoding="utf-8") as jf:
         json.dump(summary, jf, default=str, indent=2)
 
+    # === ERWEITERTE PLOTS (Senior Level) ===
+
+    # 1. Monte Carlo PATHS Plot (100 Pfade + Median + Confidence Bands)
+    logger.info("[PLOT] Saving Monte Carlo PATHS...")
+    mc_path_plot = reports_dir / "mc_paths.png"
+    equity_paths = np.array(mc_results["equity_paths"])
+    n_show = 100  # Zeige 100 Pfade
+    show_idx = np.random.choice(len(equity_paths), n_show, replace=False)
+
+    plt.figure(figsize=(12, 6))
+    for i in show_idx:
+        plt.plot(equity_paths[i], alpha=0.1, color='steelblue', linewidth=0.5)
+    median_path = np.median(equity_paths, axis=0)
+    p5_path = np.percentile(equity_paths, 5, axis=0)
+    p95_path = np.percentile(equity_paths, 95, axis=0)
+
+    plt.plot(median_path, 'r-', linewidth=3, label='Median')
+    plt.plot(p5_path, 'orange', linestyle='--', linewidth=2, label='5th %ile')
+    plt.plot(p95_path, 'orange', linestyle='--', linewidth=2)
+    plt.fill_between(range(len(p5_path)), p5_path, p95_path, alpha=0.2, color='orange', label='90% Confidence')
+
+    plt.title(f'Monte Carlo Equity Paths (n={n_show}/{len(equity_paths)} shown)')
+    plt.ylabel('Equity')
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(mc_path_plot, dpi=200, bbox_inches='tight')
+    plt.close()
+    logger.info("✅ MC Paths saved to %s", mc_path_plot)
+
+    # 2. Drawdown Duration Histogram
+    logger.info("[PLOT] Saving Drawdown Analysis...")
+    dd_plot = reports_dir / "drawdown_analysis.png"
+
+    # Calculate drawdown durations from equity curve
+    equity = initial_capital + trades_df["pnl"].cumsum()
+    peak = equity.cummax()
+    drawdown = (equity - peak) / peak
+    dd_durations = []
+    in_dd = False
+    dd_start = 0
+
+    for i, dd in enumerate(drawdown):
+        if dd < 0 and not in_dd:
+            in_dd = True
+            dd_start = i
+        elif dd >= -0.01 and in_dd:  # Recovery
+            dd_durations.append(i - dd_start)
+            in_dd = False
+
+    plt.figure(figsize=(12, 4))
+    plt.subplot(1, 2, 1)
+    plt.hist(mc_results["max_drawdowns"], bins=50, alpha=0.7, color='red')
+    plt.axvline(np.median(mc_results["max_drawdowns"]), color='black', lw=2, label='Median')
+    plt.title('Max Drawdown Distribution')
+    plt.ylabel('Frequency')
+
+    plt.subplot(1, 2, 2)
+    if dd_durations:
+        plt.hist(dd_durations, bins=20, alpha=0.7, color='purple')
+        plt.title('Drawdown Duration (Days)')
+        plt.xlabel('Duration')
+    plt.tight_layout()
+    plt.savefig(dd_plot, dpi=200)
+    plt.close()
+
+    # 3. Kelly Growth Rate vs Risk
+    logger.info("[PLOT] Saving Kelly Frontier...")
+    kelly_plot = reports_dir / "kelly_frontier.png"
+
+    # FIXED: Korrekte Kelly Growth Rate Berechnung
+    risk_frac = np.linspace(0.001, min(kelly_info['kelly_full'], 0.5), 100)
+    growth_rates = []
+
+    initial_cap = initial_capital
+    avg_trade_pnl = trades_df['pnl'].mean()
+    std_trade_pnl = trades_df['pnl'].std()
+
+    for f in risk_frac:
+        # Kelly Growth Rate Formel: g(f) = p*log(1 + b*f) + (1-p)*log(1 - f)
+        expected_return = f * avg_trade_pnl / initial_cap
+        volatility = f * std_trade_pnl / initial_cap
+        
+        # Geometric growth rate (ohne log(0) Probleme)
+        if expected_return > volatility * 0.1:  # Nur sinnvolle Fraktionen
+            growth_rate = expected_return - 0.5 * volatility**2
+            growth_rates.append(growth_rate * 252)  # Annualisiert
+        else:
+            growth_rates.append(0.0)
+
+    growth_rates = np.maximum(growth_rates, -0.5)  # Floor für Plot
+
+    fig, ax = plt.subplots(figsize=(12, 7))
+    ax.plot(risk_frac * 100, np.array(growth_rates)*100, 'b-', linewidth=3, label='Kelly Growth Rate')
+
+    # Kelly Markierungen
+    ax.axvline(kelly_info['kelly_quarter'] * 100, color='limegreen', linestyle=':', linewidth=2, 
+            label=f'¼ Kelly: {kelly_info["kelly_quarter"]:.1%}', alpha=0.8)
+    ax.axvline(kelly_info['kelly_half'] * 100, color='green', linestyle='--', linewidth=3, 
+            label=f'½ Kelly: {kelly_info["kelly_half"]:.1%} (KONSERVATIV)', alpha=0.9)
+    ax.axvline(kelly_info['kelly_full'] * 100, color='red', linestyle='-', linewidth=2, 
+            label=f'Full Kelly: {kelly_info["kelly_full"]:.1%} (AGGRESSIV)', alpha=0.9)
+
+    # Optimaler Punkt markieren
+    max_growth_idx = np.argmax(growth_rates)
+    ax.plot(risk_frac[max_growth_idx]*100, growth_rates[max_growth_idx]*100, 'go', markersize=12, 
+            label=f'Max Growth: {risk_frac[max_growth_idx]*100:.1f}%')
+
+    ax.set_xlabel('Risiko pro Trade (%)', fontsize=14, fontweight='bold')
+    ax.set_ylabel('Jährliche Wachstumsrate (%)', fontsize=14, fontweight='bold')
+    ax.set_title('🤑 KELLY CRITERION - OPTIMALES POSITION SIZING\n'
+                f'(Winrate {kelly_info["win_rate"]:.1%} | Payoff {kelly_info["payoff_ratio"]:.2f})', 
+                fontsize=16, fontweight='bold', pad=20)
+
+    ax.legend(fontsize=11, framealpha=0.95, loc='upper left')
+    ax.grid(True, alpha=0.3)
+    ax.set_xlim(0, max(10, kelly_info['kelly_full']*100*1.2))
+
+    plt.tight_layout()
+    plt.savefig(kelly_plot, dpi=300, bbox_inches='tight', facecolor='white')
+    plt.close()
+    logger.info("✅ Kelly Frontier saved: Max Growth bei %.1f%% Risiko", risk_frac[max_growth_idx]*100)
+
+    # 4. Trade PnL Distribution + Fat Tails
+    logger.info("[PLOT] Saving PnL Distribution...")
+    pnl_plot = reports_dir / "pnl_distribution.png"
+    fig, axes = plt.subplots(2, 2, figsize=(12, 8))
+
+    # PnL Histogram
+    axes[0,0].hist(trades_df['pnl'], bins=50, alpha=0.7, edgecolor='black')
+    axes[0,0].axvline(trades_df['pnl'].median(), color='red', lw=2)
+    axes[0,0].set_title('Trade PnL Distribution')
+
+    # QQ Plot vs Normal
+    from scipy import stats
+    stats.probplot(trades_df['pnl'], dist="norm", plot=axes[0,1])
+    axes[0,1].set_title('QQ Plot vs Normal (Fat Tails?)')
+
+    # PnL vs Volume
+    axes[1,0].scatter(trades_df['volume'].abs(), trades_df['pnl'], alpha=0.5)
+    axes[1,0].set_xlabel('Volume')
+    axes[1,0].set_ylabel('PnL')
+    axes[1,0].set_title('PnL vs Position Size')
+
+    # Win/Loss by Hour
+    trades_df['hour'] = pd.to_datetime(trades_df['entry_time']).dt.hour
+    hourly_stats = trades_df.groupby('hour')['pnl'].agg(['mean', 'count']).reset_index()
+    axes[1,1].bar(hourly_stats['hour'], hourly_stats['mean'])
+    axes[1,1].set_title('Avg PnL by Entry Hour')
+    plt.tight_layout()
+    plt.savefig(pnl_plot, dpi=200)
+    plt.close()
+
+    logger.info("✅ Advanced plots completed")
+
     # === SCHRITT 12: Report speichern (mit Tabellen) ===
     logger.info("[STEP 12] Saving report...")
     report_path = reports_dir / "report.txt"

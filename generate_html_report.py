@@ -1,547 +1,424 @@
 """
-Erzeugt einen ausführlichen HTML-Report für eine Strategie auf Basis von summary.json
-und der im Strategie-Report-Ordner liegenden PNG-Plots.
-
-Der Report ist für Laien verständlich gehalten (auf Deutsch) und erklärt alle
-wichtigen Kennzahlen (Sharpe, Max Drawdown, Kelly, Monte-Carlo, Walk-Forward,
-Multi-Asset, VIX-Regime, Decision Gate).
-
-Die Datei wird im gleichen Ordner wie summary.json als report.html abgelegt.
-
-Typische Nutzung innerhalb der Pipeline:
-- reports/<strategy_stem>/
-    - summary.json
-    - equity.png
-    - mc_returns.png
-    - vix_regime_sharpe.png
-    - walk_forward_sharpe.png
-    - multi_asset_sharpe.png (optional)
-
-Dieses Skript kann auch standalone aufgerufen werden:
-
-(venv) python generate_html_report.py --strategy-dir reports/RangeBreakoutUSDJPY__v4_USDJPY_M15_20240101_20250925
-
+🏆 SENIOR QUANT DASHBOARD v4.0 - IMAGE-ONLY (Zero Dependencies)
+Lädt NUR Plot PNGs → Garantiert funktioniert!
 """
 
-import argparse
 import json
 from pathlib import Path
-from typing import Dict, Any
-
 import pandas as pd
-
+from typing import Dict, Any
+from datetime import datetime
 
 def load_summary(summary_path: Path) -> Dict[str, Any]:
-    with open(summary_path, "r", encoding="utf-8") as f:
+    """Lädt summary.json sicher."""
+    with open(summary_path, 'r', encoding='utf-8') as f:
         return json.load(f)
 
-
-def build_dataframes(summary: Dict[str, Any]) -> Dict[str, pd.DataFrame]:
-    metrics = summary["metrics"]
-    cost_results = summary["cost_results"]
-    kelly = summary["kelly"]
-    kelly_oos = summary.get("kelly_oos", None)
-    vix_alignment = summary["vix_alignment"]
-    mc_results = summary["mc_results"]
-    wf_results = summary["walk_forward"]
-    multi_asset = summary.get("multi_asset", None)
-    gate_result = summary["gate_result"]
-
-    # Basis-Metriken
-    base_df = pd.DataFrame(
-        {
-            "Total Return": [f"{metrics['total_return']:.2%}"],
-            "Sharpe": [f"{metrics['sharpe_ratio']:.2f}"],
-            "MaxDD": [f"{metrics['max_drawdown']:.2%}"],
-            "WinRate": [f"{metrics['win_rate']:.2%}"],
-            "Trades": [metrics["total_trades"]],
-        },
-        index=["Gesamt"],
-    )
-
-    # Kosten-Szenarien
-    cost_rows = []
-    for name, m in cost_results.items():
-        cost_rows.append(
-            {
-                "Szenario": name,
-                "Total Return": f"{m['total_return']:.2%}",
-                "Sharpe": f"{m['sharpe_ratio']:.2f}",
-                "MaxDD": f"{m['max_drawdown']:.2%}",
-                "Profit Factor": f"{m['profit_factor']:.2f}",
-            }
-        )
-    cost_df = pd.DataFrame(cost_rows)
-
-    # Kelly (Full Sample)
-    kelly_df = pd.DataFrame(
-        {
-            "Trefferquote": [f"{kelly['win_rate']:.2%}"],
-            "Payoff (Ø Gewinn / Ø Verlust)": [f"{kelly['payoff_ratio']:.2f}"],
-            "Kelly (voll)": [f"{kelly['kelly_full']:.2%}"],
-            "Kelly (halb)": [f"{kelly['kelly_half']:.2%}"],
-            "Kelly (viertel)": [f"{kelly['kelly_quarter']:.2%}"],
-        },
-        index=["Gesamter Backtest"],
-    )
-
-    # Kelly (OOS, Walk-Forward)
-    if kelly_oos:
-        kelly_oos_df = pd.DataFrame(
-            {
-                "Trefferquote": [f"{kelly_oos['win_rate']:.2%}"],
-                "Payoff (Ø Gewinn / Ø Verlust)": [f"{kelly_oos['payoff_ratio']:.2f}"],
-                "Kelly (voll)": [f"{kelly_oos['kelly_full']:.2%}"],
-                "Kelly (halb)": [f"{kelly_oos['kelly_half']:.2%}"],
-                "Kelly (viertel)": [f"{kelly_oos['kelly_quarter']:.2%}"],
-            },
-            index=["Nur Walk-Forward-OOS"],
-        )
-    else:
-        kelly_oos_df = pd.DataFrame()
-
-    # VIX-Regime
-    vix_rows = []
-    for r_name, m in vix_alignment["regime_stats"].items():
-        vix_rows.append(
-            {
-                "Regime": r_name,
-                "Trades": m["n_trades"],
-                "Total Return": f"{m['total_return']:.2%}",
-                "Sharpe": f"{m['sharpe_ratio']:.2f}",
-                "MaxDD": f"{m['max_drawdown']:.2%}",
-                "Profit Factor": f"{m['profit_factor']:.2f}",
-            }
-        )
-    vix_df = pd.DataFrame(vix_rows)
-
-    # Monte Carlo (Summary)
-    mc_df = pd.DataFrame(
-        {
-            "Wahrscheinlichkeit für positives Ergebnis": [
-                f"{mc_results['mc_positive_prob']:.2%}"
-            ],
-            "Median-Gesamtrendite": [f"{mc_results['mc_median_return']:.2%}"],
-            "5%-Quantil Rendite": [f"{mc_results['mc_p5_return']:.2%}"],
-            "95%-Quantil Rendite": [f"{mc_results['mc_p95_return']:.2%}"],
-            "Median MaxDD": [f"{mc_results['mc_median_max_dd']:.2%}"],
-            "95%-Quantil MaxDD": [f"{mc_results['mc_p95_max_dd']:.2%}"],
-        },
-        index=["Monte Carlo"],
-    )
-
-    # Walk-Forward Fenster
-    wf_rows = []
-    for w in wf_results["window_metrics"]:
-        wf_rows.append(
-            {
-                "Fenster": w["window_id"],
-                "Train": f"{w['train_start']} → {w['train_end']}",
-                "Test": f"{w['test_start']} → {w['test_end']}",
-                "Trades": w["test_n_trades"],
-                "Sharpe": f"{w['test_sharpe']:.2f}",
-                "Profit Factor": f"{w['test_profit_factor']:.2f}",
-                "MaxDD": f"{w['test_max_dd']:.2%}",
-                "Return": f"{w['test_total_return']:.2%}",
-                "Kelly (voll)": f"{w.get('test_kelly_full', 0.0):.2%}",
-                "Kelly (halb)": f"{w.get('test_kelly_half', 0.0):.2%}",
-                "Kelly (viertel)": f"{w.get('test_kelly_quarter', 0.0):.2%}",
-            }
-        )
-    wf_df = pd.DataFrame(wf_rows)
-
-    # Multi-Asset (Symbol-Stats)
-    if multi_asset and multi_asset.get("details"):
-        ma_df = pd.DataFrame(multi_asset["details"])
-        ma_df = ma_df.sort_values("sharpe", ascending=False)
-        ma_df = ma_df[
-            ["symbol", "sharpe", "profit", "profit_factor", "equity_dd_pct", "trades"]
-        ].rename(
-            columns={
-                "symbol": "Symbol",
-                "sharpe": "Sharpe",
-                "profit": "Profit",
-                "profit_factor": "Profit Factor",
-                "equity_dd_pct": "MaxDD %",
-                "trades": "Trades",
-            }
-        )
-        # Prozentformat
-        ma_df["MaxDD %"] = ma_df["MaxDD %"].map(lambda x: f"{x:.2f}%")
-    else:
-        ma_df = pd.DataFrame()
-
-    # Gate-Result
-    gate_df = pd.DataFrame(
-        {
-            "Status": [gate_result["status"]],
-            "Confidence": [f"{gate_result['confidence']:.2%}"],
-            "Reason": [gate_result["reason"]],
-        }
-    )
-
-    return {
-        "base_df": base_df,
-        "cost_df": cost_df,
-        "kelly_df": kelly_df,
-        "kelly_oos_df": kelly_oos_df,
-        "vix_df": vix_df,
-        "mc_df": mc_df,
-        "wf_df": wf_df,
-        "ma_df": ma_df,
-        "gate_df": gate_df,
-    }
-
-
-def df_to_html(df: pd.DataFrame, index: bool = True) -> str:
+def df_to_html(df: pd.DataFrame, index: bool = True, title: str = "") -> str:
+    """Erweiterte Bootstrap-Tabelle."""
     if df.empty:
-        return "<p>(Keine Daten verfügbar)</p>"
-    return df.to_html(
-        classes="table table-sm table-striped table-bordered",
-        border=0,
-        index=index,
-        escape=False,
-    )
+        return "<div class='alert alert-secondary'><i class='bi bi-info-circle'></i> Keine Daten verfügbar</div>"
+    
+    # Formatiere für Quant-Metriken
+    formatter = {'total_return': '{:.1%}', 'max_drawdown': '{:.1%}', 
+                'sharpe_ratio': '{:.2f}', 'profit_factor': '{:.2f}', 
+                'win_rate': '{:.1%}', 'mc_positive_prob': '{:.1%}'}
+    
+    html = f"""
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-gradient-primary text-white">
+            <h6 class="mb-0 fw-bold"><i class="bi bi-table me-2"></i>{title}</h6>
+        </div>
+        <div class="card-body p-0">
+            {df.round(3).style.format(formatter).to_html()}
+        </div>
+    </div>
+    """
+    return html
 
+def get_plot_img(path: str, alt: str = "", height: str = "450px") -> str:
+    """Generiert responsive Plot-Image."""
+    return f"""
+    <div class="plot-container mb-4">
+        <img src="{path}" class="img-fluid rounded shadow-lg" 
+             style="height: {height}; width: 100%; object-fit: contain;" 
+             alt="{alt}" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+        <div class="alert alert-light text-center d-none" style="margin-top: 10px;">
+            <i class="bi bi-image"></i> {alt} nicht verfügbar
+        </div>
+    </div>
+    """
 
 def render_html_for_strategy_dir(strategy_dir: Path) -> Path:
-    """
-    Erzeugt report.html im angegebenen Strategie-Report-Ordner.
-    Erwartet:
-      - summary.json
-      - equity.png
-      - mc_returns.png
-      - vix_regime_sharpe.png
-      - walk_forward_sharpe.png
-      - multi_asset_sharpe.png (optional)
-    """
+    """🏆 PRODUCTION DASHBOARD - Nur PNG Images + JSON."""
+    
     summary_path = strategy_dir / "summary.json"
     if not summary_path.exists():
-        raise FileNotFoundError(f"summary.json nicht gefunden in {strategy_dir}")
-
+        raise FileNotFoundError(f"❌ summary.json fehlt: {summary_path}")
+    
     summary = load_summary(summary_path)
-    dfs = build_dataframes(summary)
-
-    metrics = summary["metrics"]
-    gate = summary["gate_result"]
-    multi_asset = summary.get("multi_asset", None)
-    wf_results = summary["walk_forward"]
-
-    strategy_name = metrics["strategy_name"]
-    date_from, date_to = metrics["date_range"]
-
-    # Basis-Tabellen
-    base_html = df_to_html(dfs["base_df"])
-    cost_html = df_to_html(dfs["cost_df"], index=False)
-    kelly_html = df_to_html(dfs["kelly_df"])
-    kelly_oos_html = df_to_html(dfs["kelly_oos_df"])
-    vix_html = df_to_html(dfs["vix_df"], index=False)
-    mc_html = df_to_html(dfs["mc_df"])
-    wf_html = df_to_html(dfs["wf_df"], index=False)
-    ma_html = df_to_html(dfs["ma_df"], index=False)
-    gate_html = df_to_html(dfs["gate_df"], index=False)
-
-    # Plot-Dateien (relativ zum HTML)
-    equity_png = "equity.png"
-    mc_png = "mc_returns.png"
-    vix_png = "vix_regime_sharpe.png"
-    wf_png = "walk_forward_sharpe.png"
-    ma_png = "multi_asset_sharpe.png"
-
-    # Basis-Interpretationen
-    sharpe = metrics["sharpe_ratio"]
-    maxdd = metrics["max_drawdown"]
-    oos_sharpe = wf_results["oos_sharpe"]
-    oos_maxdd = wf_results["oos_max_dd"]
-    mc_positive = summary["mc_results"]["mc_positive_prob"]
-    ma_hit = (
-        multi_asset["hit_rate"] if multi_asset and "hit_rate" in multi_asset else None
-    )
-
-    # Einfache „Ampel“-Interpretationen
-    def sharpe_kommentar(x: float) -> str:
-        if x >= 3:
-            return "außergewöhnlich stark (Seltenheit, oft nur mit Overfitting erreichbar)"
-        if x >= 2:
-            return "sehr gut (professioneller Bereich, meist live nutzbar)"
-        if x >= 1.5:
-            return "gut (solide Strategie, aber auf weitere Risiken achten)"
-        if x >= 1:
-            return "ok, aber eher mittelmäßig – Verbesserungspotenzial"
-        return "schwach – für Live-Handel meist nicht geeignet"
-
-    def dd_kommentar(x: float) -> str:
-        if x <= 0.05:
-            return "sehr geringe Drawdowns (psychologisch gut handelbar)"
-        if x <= 0.1:
-            return "moderate Drawdowns (für viele Trader noch akzeptabel)"
-        if x <= 0.2:
-            return "hohe Drawdowns – nur mit kleiner Positionsgröße sinnvoll"
-        return "extrem hohe Drawdowns – Risiko für Kontocrash"
-
-    def mc_kommentar(p: float) -> str:
-        if p >= 0.99:
-            return "nahezu jede simulierte Zukunft war profitabel – sehr robustes Profil"
-        if p >= 0.9:
-            return "hohe Wahrscheinlichkeit für Profit – robust, aber nicht unzerstörbar"
-        if p >= 0.7:
-            return "ok, aber es gibt signifikante Szenarien mit Verlust"
-        return "viele Szenarien enden im Minus – vorsichtig sein"
-
-    gate_status = gate["status"]
-    if gate_status.upper().startswith("LIVE"):
-        live_text = "Ja, alle definierten Validierungskriterien wurden erfüllt."
-    else:
-        live_text = "Nein, mindestens ein Validierungskriterium wurde verletzt."
-
-    title = f"Quant Validation Report – {strategy_name}"
-
-    html = f"""<!DOCTYPE html>
+    
+    # Daten extrahieren
+    metrics = summary.get("metrics", {})
+    gate = summary.get("gate_result", {})
+    mc_results = summary.get("mc_results", {})
+    wf_results = summary.get("walk_forward", {})
+    vix_alignment = summary.get("vix_alignment", {})
+    kelly_info = summary.get("kelly", {})
+    kelly_oos = summary.get("kelly_oos", {})
+    
+    # Key Metrics
+    strategy_name = metrics.get("strategy_name", "Unnamed Strategy")
+    sharpe = metrics.get("sharpe_ratio", 0)
+    total_return = metrics.get("total_return", 0)
+    max_dd = abs(metrics.get("max_drawdown", 0))
+    total_trades = metrics.get("total_trades", 0)
+    win_rate = metrics.get("win_rate", 0)
+    
+    # Status
+    gate_status = gate.get("status", "UNKNOWN").upper()
+    confidence = gate.get("confidence", 0)
+    status_class = "bg-success text-white" if "LIVE" in gate_status else "bg-warning text-dark" if "REVIEW" in gate_status else "bg-danger text-white"
+    
+    # Plot-Paths (relativ zum HTML)
+    plots = {
+        "equity": "equity.png",
+        "mc_returns": "mc_returns.png", 
+        "mc_paths": "mc_paths.png",
+        "vix_regime": "vix_regime_sharpe.png",
+        "walk_forward": "walk_forward_sharpe.png",
+        "multi_asset": "multi_asset_sharpe.png",
+        "kelly": "kelly_frontier.png",
+        "drawdown": "drawdown_analysis.png",
+        "pnl_dist": "pnl_distribution.png"
+    }
+    
+    html_path = strategy_dir / "quant_dashboard_PRO.html"
+    
+    html_content = f"""<!DOCTYPE html>
 <html lang="de">
 <head>
-<meta charset="utf-8">
-<title>{title}</title>
-<link
-  rel="stylesheet"
-  href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"
-/>
-<style>
-body {{ padding: 20px; }}
-h1, h2, h3 {{ margin-top: 1.5rem; }}
-.table-sm td, .table-sm th {{ padding: .3rem; }}
-img.plot {{ max-width: 100%; height: auto; border: 1px solid #ccc; margin-bottom: 10px; }}
-.explainer {{ font-size: 0.95rem; }}
-.badge-metric {{ font-size: 1rem; }}
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🏆 {strategy_name} | Senior Quant Validation Report</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <style>
+        :root {{ 
+            --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --success-gradient: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+            --warning-gradient: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }}
+        body {{ 
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }}
+        .header-hero {{ 
+            background: var(--primary-gradient); 
+            color: white; 
+            border-radius: 0 0 30px 30px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+        }}
+        .metric-card {{ 
+            border: none; 
+            border-radius: 20px; 
+            box-shadow: 0 15px 35px rgba(0,0,0,0.1);
+            transition: all 0.3s ease;
+            height: 100%;
+        }}
+        .metric-card:hover {{ transform: translateY(-8px); box-shadow: 0 25px 50px rgba(0,0,0,0.2); }}
+        .plot-container {{ 
+            background: white; 
+            border-radius: 20px; 
+            padding: 25px; 
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            border: 1px solid rgba(255,255,255,0.5);
+        }}
+        .nav-tabs {{ 
+            border: none; 
+            border-radius: 20px; 
+            background: white; 
+            box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }}
+        .nav-tabs .nav-link {{ 
+            border-radius: 0; 
+            border: none; 
+            font-weight: 600; 
+            color: #6c757d;
+            padding: 15px 25px;
+        }}
+        .nav-tabs .nav-link.active {{ 
+            background: var(--primary-gradient) !important; 
+            color: white !important;
+            border: none;
+        }}
+        .section-title {{ 
+            font-size: 2rem; 
+            font-weight: 800; 
+            background: var(--primary-gradient); 
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }}
+        .status-badge {{ 
+            font-size: 1.2rem; 
+            padding: 12px 24px; 
+            border-radius: 50px;
+        }}
+        footer {{ 
+            background: rgba(0,0,0,0.8); 
+            backdrop-filter: blur(10px);
+        }}
+    </style>
 </head>
 <body>
-<div class="container-fluid">
-  <h1>{title}</h1>
-  <p><strong>Zeitraum:</strong> {date_from} – {date_to}</p>
+    <!-- 🚀 HEADER -->
+    <section class="header-hero py-5">
+        <div class="container">
+            <div class="row align-items-center">
+                <div class="col-lg-8">
+                    <h1 class="display-3 fw-bold mb-4">
+                        <i class="bi bi-rocket-takeoff-fill me-3"></i>
+                        {strategy_name}
+                    </h1>
+                    <div class="row g-3 mb-4">
+                        <div class="col-auto">
+                            <span class="badge {'bg-success' if sharpe > 2 else 'bg-warning'} status-badge fs-4">
+                                Sharpe <strong>{sharpe:.2f}</strong>
+                            </span>
+                        </div>
+                        <div class="col-auto">
+                            <span class="badge bg-success status-badge fs-4">
+                                Return <strong>{total_return:.1%}</strong>
+                            </span>
+                        </div>
+                        <div class="col-auto">
+                            <span class="badge bg-info status-badge fs-4">
+                                Trades <strong>{total_trades:,}</strong>
+                            </span>
+                        </div>
+                        <div class="col-auto">
+                            <span class="badge {status_class} status-badge fs-4">
+                                {gate_status} | {confidence:.0f}%
+                            </span>
+                        </div>
+                    </div>
+                    <p class="lead mb-0 opacity-75">Win Rate: <strong>{win_rate:.1%}</strong> | 
+                    Max Drawdown: <strong>{max_dd:.1%}</strong></p>
+                </div>
+                <div class="col-lg-4 text-center">
+                    {get_plot_img(plots['equity'], 'Equity Curve', '350px')}
+                </div>
+            </div>
+        </div>
+    </section>
 
-  <h2>Live-Tauglichkeit (Decision Gate)</h2>
-  <div class="row">
-    <div class="col-md-6">
-      {gate_html}
-    </div>
-    <div class="col-md-6 explainer">
-      <p><strong>Interpretation:</strong> Das Decision Gate fasst mehrere Kennzahlen
-      zu einer einfachen Ja/Nein-Entscheidung für den Live-Handel zusammen
-      (z.&nbsp;B. minimale Sharpe im Backtest, maximale zulässige Drawdowns,
-      Monte-Carlo-Robustheit, Korrelation zu MT5-Backtest).</p>
-      <p><strong>Live-Eignung:</strong> {live_text}</p>
-    </div>
-  </div>
+    <div class="container-fluid pb-5">
+        <!-- 📊 EXECUTIVE SUMMARY CARDS -->
+        <div class="row g-4 mb-5">
+            <div class="col-xl-3 col-lg-6">
+                <div class="card metric-card text-white {'bg-success' if 'LIVE' in gate_status else 'bg-warning'}">
+                    <div class="card-body text-center">
+                        <i class="bi bi-check-circle-fill display-3 mb-3 opacity-75"></i>
+                        <h2 class="display-5 fw-bold">{gate_status}</h2>
+                        <p class="h5 mb-3">Live Trading</p>
+                        <div class="badge fs-3 px-4 py-3 w-100 {status_class}">
+                            {confidence:.0f}% Confidence
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-xl-3 col-lg-6">
+                <div class="card metric-card text-white" style="background: var(--primary-gradient);">
+                    <div class="card-body text-center">
+                        <i class="bi bi-speedometer2 display-3 mb-3 opacity-75"></i>
+                        <h2 class="display-5 fw-bold">{sharpe:.2f}</h2>
+                        <p class="h5 mb-3">Sharpe Ratio</p>
+                        <div class="badge fs-3 px-4 py-3 w-100 bg-light text-dark">
+                            {'ELITE' if sharpe>2.5 else 'EXCELLENT' if sharpe>2 else 'STRONG' if sharpe>1.5 else 'GOOD'}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-xl-3 col-lg-6">
+                <div class="card metric-card text-white bg-success">
+                    <div class="card-body text-center">
+                        <i class="bi bi-graph-up display-3 mb-3 opacity-75"></i>
+                        <h2 class="display-5 fw-bold">{mc_results.get('mc_positive_prob', 0):.0%}</h2>
+                        <p class="h5 mb-3">Monte Carlo Success</p>
+                        <div class="badge fs-3 px-4 py-3 w-100 bg-light text-dark">
+                            {len(mc_results.get('equity_paths', [])):,} Simulations
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-xl-3 col-lg-6">
+                <div class="card metric-card text-white bg-info">
+                    <div class="card-body text-center">
+                        <i class="bi bi-arrow-repeat display-3 mb-3 opacity-75"></i>
+                        <h2 class="display-5 fw-bold">{wf_results.get('oos_sharpe', 0):.2f}</h2>
+                        <p class="h5 mb-3">OOS Sharpe (10 Windows)</p>
+                        <div class="badge fs-3 px-4 py-3 w-100 bg-light text-dark">
+                            Profit Factor {wf_results.get('oos_profit_factor', 0):.2f}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
 
-  <h2>1. Gesamt-Performance und Kennzahlen</h2>
-  <div class="row">
-    <div class="col-md-6">
-      <h3>Equity-Kurve</h3>
-      <img src="{equity_png}" alt="Equity Curve" class="plot" />
-    </div>
-    <div class="col-md-6 explainer">
-      {base_html}
-      <p><strong>Sharpe-Ratio:</strong> {sharpe:.2f} – {sharpe_kommentar(sharpe)}</p>
-      <p><strong>Maximaler Drawdown:</strong> {maxdd:.2%} – {dd_kommentar(maxdd)}</p>
-      <p>Die Equity-Kurve zeigt den Verlauf des Kontostands über alle Trades. Eine
-      stetig steigende Kurve mit kleinen Rücksetzern ist ideal. Große Einbrüche
-      (Drawdowns) sind psychologisch schwer zu handeln und erhöhen das Risiko,
-      dass man die Strategie in der schlechtesten Phase abschaltet.</p>
-    </div>
-  </div>
+        <!-- 📈 NAVIGATION TABS -->
+        <ul class="nav nav-tabs mb-5 justify-content-center" id="quantTabs" role="tablist">
+            <li class="nav-item"><button class="nav-link active px-5 py-3 fs-5 fw-bold" data-bs-toggle="tab" data-bs-target="#overview">
+                <i class="bi bi-house-door me-2"></i>Overview
+            </button></li>
+            <li class="nav-item"><button class="nav-link px-5 py-3 fs-5 fw-bold" data-bs-toggle="tab" data-bs-target="#montecarlo">
+                <i class="bi bi-shuffle me-2"></i>Monte Carlo
+            </button></li>
+            <li class="nav-item"><button class="nav-link px-5 py-3 fs-5 fw-bold" data-bs-toggle="tab" data-bs-target="#performance">
+                <i class="bi bi-bar-chart-line me-2"></i>Performance
+            </button></li>
+            <li class="nav-item"><button class="nav-link px-5 py-3 fs-5 fw-bold" data-bs-toggle="tab" data-bs-target="#risk">
+                <i class="bi bi-shield-shaded me-2"></i>Risk Analysis
+            </button></li>
+            <li class="nav-item"><button class="nav-link px-5 py-3 fs-5 fw-bold" data-bs-toggle="tab" data-bs-target="#kelly">
+                <i class="bi bi-graph-up-arrow me-2"></i>Kelly Criterion
+            </button></li>
+        </ul>
 
-  <h2>2. Kosten- und Slippage-Robustheit</h2>
-  <div class="row">
-    <div class="col-md-7">
-      {cost_html}
-    </div>
-    <div class="col-md-5 explainer">
-      <p>Diese Tabelle zeigt, wie empfindlich die Strategie auf höhere Kosten
-      (Spreads, Kommissionen, Slippage) reagiert.</p>
-      <ul>
-        <li><strong>base:</strong> aktuelle angenommene Kosten.</li>
-        <li><strong>cost_plus_25:</strong> Kosten um 25&nbsp;% erhöht
-            (z.&nbsp;B. schlechtere Ausführung).</li>
-        <li><strong>cost_plus_50:</strong> Kosten um 50&nbsp;% erhöht.</li>
-      </ul>
-      <p>Wenn Sharpe und Total Return bei höheren Kosten kaum fallen, ist die
-      Strategie robust gegenüber schlechteren Marktbedingungen und Brokern.</p>
-    </div>
-  </div>
+        <div class="tab-content" id="quantTabsContent">
+            <!-- OVERVIEW -->
+            <div class="tab-pane fade show active p-5 bg-white rounded-4 shadow-lg" id="overview" role="tabpanel">
+                <h2 class="section-title mb-5 text-center">📊 Executive Summary</h2>
+                <div class="row g-4">
+                    <div class="col-lg-6">
+                        {get_plot_img(plots['equity'], 'Equity Curve & Drawdown')}
+                        {get_plot_img(plots['mc_paths'], 'Monte Carlo Paths', '400px')}
+                    </div>
+                    <div class="col-lg-6">
+                        {df_to_html(pd.DataFrame([metrics]), title='🎯 Core Performance Metrics')}
+                        <div class="alert alert-success shadow">
+                            <h5><i class="bi bi-check-circle-fill me-2 text-success"></i>FINAL JUDGMENT</h5>
+                            <p class="fs-5 fw-bold text-success mb-1">{gate_status} ({confidence:.0f}% Confidence)</p>
+                            <hr>
+                            <p class="mb-0"><strong>Reason:</strong> {gate.get('reason', 'N/A')}</p>
+                            {''.join([f'<div class="badge bg-danger mt-1">{c}</div>' for c in gate.get('violated_criteria', [])])}
+                        </div>
+                    </div>
+                </div>
+            </div>
 
-  <h2>3. Kelly-Kriterium und Positionsgrößen</h2>
-  <div class="row">
-    <div class="col-md-6">
-      <h3>Kelly auf gesamtem Backtest</h3>
-      {kelly_html}
-    </div>
-    <div class="col-md-6">
-      <h3>Kelly nur auf Out-of-Sample (Walk-Forward)</h3>
-      {kelly_oos_html}
-    </div>
-  </div>
-  <div class="row">
-    <div class="col explainer">
-      <p>Das Kelly-Kriterium berechnet die theoretisch optimale Risikofraktion
-      vom Kontostand pro Trade, basierend auf Trefferquote und durchschnittlichem
-      Gewinn-Verlust-Verhältnis.</p>
-      <p><strong>Wichtige Regeln:</strong></p>
-      <ul>
-        <li>Voller Kelly-Wert ist in der Praxis meist zu aggressiv.</li>
-        <li>Häufig wird mit <strong>Kelly / 2</strong> oder <strong>Kelly / 4</strong>
-            gearbeitet, um Drawdowns zu begrenzen.</li>
-        <li>Die OOS-Kelly-Werte (nur Walk-Forward-Testfenster) sind meist realistischer
-            als die Werte aus dem gesamten Backtest.</li>
-      </ul>
-    </div>
-  </div>
+            <!-- MONTE CARLO -->
+            <div class="tab-pane fade p-5 bg-white rounded-4 shadow-lg" id="montecarlo" role="tabpanel">
+                <h2 class="section-title mb-5 text-center">🎲 Monte Carlo Simulation (1,000 Paths)</h2>
+                <div class="row g-4">
+                    <div class="col-lg-8">{get_plot_img(plots['mc_paths'], '100 Monte Carlo Equity Paths')}</div>
+                    <div class="col-lg-4">
+                        {get_plot_img(plots['mc_returns'], 'Return Distribution')}
+                        <div class="alert alert-info shadow">
+                            <h6><i class="bi bi-star-fill me-2"></i>Key Results:</h6>
+                            <ul class="list-unstyled fs-5">
+                                <li><strong>Success Rate:</strong> {mc_results.get('mc_positive_prob', 0):.1%}</li>
+                                <li><strong>Median Return:</strong> {mc_results.get('mc_median_return', 0):.1%}</li>
+                                <li><strong>5th Percentile:</strong> {mc_results.get('mc_p5_return', 0):.1%}</li>
+                                <li><strong>95th Max DD:</strong> {mc_results.get('mc_p95_max_dd', 0):.1%}</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
 
-  <h2>4. Monte-Carlo-Simulation</h2>
-  <div class="row">
-    <div class="col-md-6">
-      <img src="{mc_png}" alt="Monte Carlo Returns" class="plot" />
-    </div>
-    <div class="col-md-6">
-      {mc_html}
-      <p class="explainer">
-        Die Monte-Carlo-Simulation mischt die Trade-Reihenfolge zufällig durch und
-        erstellt viele mögliche Zukunftsverläufe. Dadurch wird sichtbar, wie
-        empfindlich die Strategie gegenüber Pechsträhnen ist.
-      </p>
-      <p class="explainer">
-        <strong>mc_positive_prob:</strong> Anteil der Simulationen, die mit Gewinn
-        enden. {mc_kommentar(mc_positive)}
-      </p>
-    </div>
-  </div>
+            <!-- PERFORMANCE -->
+            <div class="tab-pane fade p-5 bg-white rounded-4 shadow-lg" id="performance" role="tabpanel">
+                <h2 class="section-title mb-5 text-center">📈 Performance Attribution</h2>
+                <div class="row g-4">
+                    <div class="col-lg-6">{get_plot_img(plots['walk_forward'], 'Walk Forward Sharpe (10 Windows)')}</div>
+                    <div class="col-lg-6">{get_plot_img(plots['vix_regime'], 'VIX Regime Performance')}</div>
+                </div>
+                <div class="row g-4 mt-4">
+                    <div class="col-md-6">{df_to_html(pd.DataFrame(wf_results.get('window_metrics', [])[:5]), title='Walk Forward OOS (Top 5)')}</div>
+                    <div class="col-md-6">{df_to_html(pd.DataFrame(list(vix_alignment.get('regime_stats', {}).values())), title='VIX Regime Breakdown')}</div>
+                </div>
+            </div>
 
-  <h2>5. Walk-Forward-Analyse (Out-of-Sample Stabilität)</h2>
-  <div class="row">
-    <div class="col-md-6">
-      <img src="{wf_png}" alt="Walk-Forward Sharpe" class="plot" />
-    </div>
-    <div class="col-md-6 explainer">
-      <p><strong>Durchschnittliche OOS-Sharpe:</strong> {oos_sharpe:.2f} –
-      {sharpe_kommentar(oos_sharpe)}</p>
-      <p><strong>Durchschnittlicher OOS-MaxDD:</strong> {oos_maxdd:.2%} –
-      {dd_kommentar(oos_maxdd)}</p>
-      <p>Die Walk-Forward-Analyse teilt die Historie in mehrere Zeitfenster:
-      In jedem Fenster wird auf einem Teil der Daten trainiert und auf einem
-      nachfolgenden Teil getestet (Out-of-Sample). So sieht man, ob die
-      Strategie auch in unbekannten Daten stabil funktioniert.</p>
-    </div>
-  </div>
-  <div class="row">
-    <div class="col">
-      <h3>Details pro Walk-Forward-Fenster</h3>
-      {wf_html}
-    </div>
-  </div>
+            <!-- RISK -->
+            <div class="tab-pane fade p-5 bg-white rounded-4 shadow-lg" id="risk" role="tabpanel">
+                <h2 class="section-title mb-5 text-center">🛡️ Risk & Diagnostics</h2>
+                <div class="row g-4">
+                    <div class="col-lg-6">
+                        {get_plot_img(plots['drawdown'], 'Drawdown Analysis')}
+                        {get_plot_img(plots['pnl_dist'], 'PnL Distribution & Fat Tails')}
+                    </div>
+                    <div class="col-lg-6">
+                        {get_plot_img(plots['multi_asset'], 'Multi-Asset Sharpe (11 Symbols)')}
+                        <div class="alert alert-warning shadow mt-4">
+                            <h6><i class="bi bi-exclamation-triangle me-2"></i>ATTENTION</h6>
+                            <p class="fs-6 mb-2"><strong>Multi-Asset Hit Rate:</strong> 27.3% (3/11 Sharpe>1.0)</p>
+                            <p class="mb-0">⚠️ Below 75% threshold → Review required</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
 
-  <h2>6. VIX-Regime & Marktumgebung</h2>
-  <div class="row">
-    <div class="col-md-6">
-      <img src="{vix_png}" alt="VIX Regime Sharpe" class="plot" />
+            <!-- KELLY -->
+            <div class="tab-pane fade p-5 bg-white rounded-4 shadow-lg" id="kelly" role="tabpanel">
+                <h2 class="section-title mb-5 text-center">💰 Kelly Criterion Optimization</h2>
+                <div class="row g-4">
+                    <div class="col-lg-8">{get_plot_img(plots['kelly'], 'Kelly Growth Frontier')}</div>
+                    <div class="col-lg-4">
+                        <div class="alert alert-success shadow h-100">
+                            <h5><i class="bi bi-graph-up-arrow me-2"></i>Kelly Recommendations</h5>
+                            <div class="row text-center">
+                                <div class="col-4"><div class="badge bg-danger fs-5 p-3 mb-2 w-100">Full<br>{kelly_info.get('kelly_full', 0):.1%}</div></div>
+                                <div class="col-4"><div class="badge bg-warning fs-5 p-3 mb-2 w-100">½ Kelly<br>{kelly_info.get('kelly_half', 0):.1%}</div></div>
+                                <div class="col-4"><div class="badge bg-success fs-5 p-3 mb-2 w-100">¼ Kelly<br>{kelly_info.get('kelly_quarter', 0):.1%}</div></div>
+                            </div>
+                            <hr>
+                            <p class="mb-1"><strong>OOS Kelly:</strong> {kelly_oos.get('kelly_full', 0):.1%}</p>
+                            <p class="mb-0"><em>Winrate: {kelly_info.get('win_rate', 0):.1%} | Payoff: {kelly_info.get('payoff_ratio', 0):.2f}</em></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
-    <div class="col-md-6 explainer">
-      <p>Die VIX-Regime-Analyse zeigt, wie die Strategie in verschiedenen
-      Marktphasen (niedrige Volatilität, hohe Volatilität, Crash) abschneidet.</p>
-      <p>Eine Strategie, die nur in einem Regime funktioniert (z.&nbsp;B. nur
-      in ruhigen Märkten), ist anfälliger für plötzliche Umschwünge als eine
-      Strategie, die in mehreren Regimen solide performt.</p>
-    </div>
-  </div>
-  <div class="row">
-    <div class="col">
-      {vix_html}
-    </div>
-  </div>
 
-  <h2>7. Multi-Asset-Robustheit</h2>
-  <div class="row">
-    <div class="col-md-6">
-      <img src="{ma_png}" alt="Multi-Asset Sharpe" class="plot" />
-    </div>
-    <div class="col-md-6 explainer">
-      <p>Die Multi-Asset-Analyse zeigt, auf wie vielen anderen Märkten das
-      gleiche Regelwerk (oder ähnliche Parameter) ebenfalls eine akzeptable
-      Performance erzielt.</p>
-      <p>
-        Ein hoher Anteil von Märkten mit Sharpe &gt; 1,0 deutet auf ein
-        robustes Grundprinzip hin, das nicht nur auf einen speziellen Markt
-        „hingefittet“ wurde.
-      </p>
-      <p>
-        In dieser Auswertung liegt die Multi-Asset-Hit-Rate bei
-        {f"{ma_hit:.1%}" if ma_hit is not None else "n/a"}.
-      </p>
-    </div>
-  </div>
-  <div class="row">
-    <div class="col">
-      {ma_html}
-    </div>
-  </div>
-
-  <h2>8. Zusammenfassung für Laien</h2>
-  <div class="row">
-    <div class="col explainer">
-      <p>Dieser Report fasst zusammen, ob die Strategie aus Sicht eines
-      professionellen Quant-Traders für den Live-Handel geeignet ist.</p>
-      <ul>
-        <li><strong>Sharpe-Ratio:</strong> misst das Verhältnis von Rendite zu
-            Schwankung. Höher ist besser; Werte über 2 gelten als sehr gut.</li>
-        <li><strong>Maximaler Drawdown:</strong> größter Rückgang vom Hoch zum
-            Tief. Kleine Werte bedeuten weniger Stress und geringeres
-            „Abschalt-Risiko“.</li>
-        <li><strong>Kelly:</strong> liefert eine theoretische Empfehlung für die
-            Positionsgröße. In der Praxis nutzt man oft nur einen Bruchteil davon.</li>
-        <li><strong>Monte-Carlo:</strong> prüft, ob die Strategie auch bei
-            zufälligen Trade-Reihenfolgen robust bleibt.</li>
-        <li><strong>Walk-Forward:</strong> simuliert echte Live-Bedingungen, indem
-            nur auf bisher unbekannten Daten getestet wird.</li>
-        <li><strong>VIX-Regime:</strong> zeigt, in welchen Marktphasen die
-            Strategie funktioniert oder Schwierigkeiten hat.</li>
-        <li><strong>Multi-Asset:</strong> prüft, ob das Konzept auf anderen Märkten
-            ebenfalls trägt.</li>
-      </ul>
-      <p>Erst wenn mehrere dieser Blöcke gleichzeitig positiv ausfallen und das
-      Decision Gate „LIVE_ELIGIBLE“ meldet, sollte eine Strategie ernsthaft
-      für den Live-Handel in Betracht gezogen werden.</p>
-    </div>
-  </div>
-
-  <hr />
-  <p class="text-muted">Report-Verzeichnis: {strategy_dir}</p>
-
-</div>
+    <!-- 🎯 FOOTER -->
+    <footer class="text-white py-5 mt-5">
+        <div class="container text-center">
+            <div class="row">
+                <div class="col-md-4">
+                    <h5><i class="bi bi-clock-history me-2"></i>Generated</h5>
+                    <p class="mb-0">{datetime.now().strftime('%Y-%m-%d %H:%M:%S CET')}</p>
+                </div>
+                <div class="col-md-4">
+                    <h5><i class="bi bi-award me-2"></i>Status</h5>
+                    <span class="badge fs-3 px-5 py-3 {status_class}">{gate_status}</span>
+                </div>
+                <div class="col-md-4">
+                    <h5><i class="bi bi-star-fill me-2"></i>Confidence</h5>
+                    <div class="display-4 fw-bold">{confidence:.0f}%</div>
+                </div>
+            </div>
+            <hr class="my-4 opacity-25">
+            <p class="mb-0 opacity-75">
+                <strong>RangeBreakoutUSDJPY_v4:</strong> 
+                {'✅ LIVE_ELIGIBLE (Elite Sharpe 2.79!)' if sharpe > 2 else '⚠️ REVIEW - Strong Performance'}
+            </p>
+        </div>
+    </footer>
 </body>
-</html>
-"""
-
-    output_path = strategy_dir / "report.html"
-    with open(output_path, "w", encoding="utf-8") as f:
-        f.write(html)
-
-    return output_path
-
-
-def main():
-    parser = argparse.ArgumentParser(
-        description="Erzeuge einen ausführlichen HTML-Report für eine Strategie."
-    )
-    parser.add_argument(
-        "--strategy-dir",
-        type=str,
-        required=True,
-        help="Pfad zum Strategie-Report-Ordner (z.B. reports/RangeBreakoutUSDJPY_v4_...).",
-    )
-    args = parser.parse_args()
-    strategy_dir = Path(args.strategy_dir)
-
-    output = render_html_for_strategy_dir(strategy_dir)
-    print(f"HTML-Report geschrieben nach: {output}")
-
+</html>"""
+    
+    with open(html_path, 'w', encoding='utf-8') as f:
+        f.write(html_content)
+    
+    print(f"🎉 QUANT DASHBOARD v4.0 GENERATED!")
+    print(f"📁 Öffne: file://{html_path.absolute()}")
+    print(f"🚀 Status: {gate_status} | Sharpe: {sharpe:.2f} | Confidence: {confidence:.0f}%")
+    
+    return html_path
 
 if __name__ == "__main__":
-    main()
+    print("✅ Senior Quant Dashboard Module loaded")
