@@ -71,23 +71,23 @@ def _attach_regimes_to_trades(
     regime_series: pd.Series,
 ) -> pd.DataFrame:
     """
-    Mapped die HMM-Regime (Index = Zeit) auf Trades (entrytime).
+    Mapped die HMM-Regime (Index = Zeit) auf Trades (entry_time).
     Nimmt das Regime am Entry-Zeitpunkt (vorheriges bekanntes Regime).
     """
     if trades_df.empty:
         raise ValueError("trades_df empty in _attach_regimes_to_trades")
 
-    if "entrytime" not in trades_df.columns:
-        raise ValueError("trades_df must contain 'entrytime' column")
+    if "entry_time" not in trades_df.columns:
+        raise ValueError("trades_df must contain 'entry_time' column")
 
     df = trades_df.copy()
-    df["entrytime"] = pd.to_datetime(df["entrytime"])
+    df["entry_time"] = pd.to_datetime(df["entry_time"])
     regime_series = regime_series.sort_index()
 
     # Für jeden Entry das letzte bekannte Regime vor oder gleich der Entry-Zeit
     # via reindex(method="ffill")
-    df = df.sort_values("entrytime")
-    regimes_for_trades = regime_series.reindex(df["entrytime"], method="ffill")
+    df = df.sort_values("entry_time")
+    regimes_for_trades = regime_series.reindex(df["entry_time"], method="ffill")
     df["hmm_regime"] = regimes_for_trades.values
 
     return df
@@ -108,7 +108,7 @@ def analyze_hmm_regimes(
     Parameters
     ----------
     trades_df : pd.DataFrame
-        Erwartet Spalten ['entrytime', 'pnl'].
+        Erwartet Spalten ['entry_time', 'pnl'].
     prices_df : pd.DataFrame | None
         Optionaler OHLCV-Preis-DataFrame mit Spalte 'close' und DatetimeIndex.
         Falls None, wird aus Trades eine Equity-Kurve gebaut und daraus
@@ -133,8 +133,8 @@ def analyze_hmm_regimes(
     if trades_df.empty:
         raise ValueError("analyze_hmm_regimes: trades_df is empty.")
 
-    if "entrytime" not in trades_df.columns:
-        raise ValueError("trades_df must contain 'entrytime' column.")
+    if "entry_time" not in trades_df.columns:
+        raise ValueError("trades_df must contain 'entry_time' column.")
     if "pnl" not in trades_df.columns:
         raise ValueError("trades_df must contain 'pnl' column.")
 
@@ -159,10 +159,10 @@ def analyze_hmm_regimes(
         )
     else:
         # HMM auf Equity-Returns der Strategie
-        sorted_trades = trades_df.sort_values("entrytime")
-        initial_capital = float(config.get("initial_capital", 10_000.0))
+        sorted_trades = trades_df.sort_values("entry_time")
+        initial_capital = float(config.get("initial_capital", 100_000.0))
         equity = initial_capital + sorted_trades["pnl"].cumsum().values
-        equity_series = pd.Series(equity, index=pd.to_datetime(sorted_trades["entrytime"]))
+        equity_series = pd.Series(equity, index=pd.to_datetime(sorted_trades["entry_time"]))
         returns = equity_series.pct_change().dropna()
         logger.info(
             "HMM on equity returns: %d observations, n_states=%d",
@@ -185,7 +185,7 @@ def analyze_hmm_regimes(
     # ------------------------------------------------------------------
     # 4) Kennzahlen pro Regime berechnen
     # ------------------------------------------------------------------
-    initial_capital = float(config.get("initial_capital", 10_000.0))
+    initial_capital = float(config.get("initial_capital", 100_000.0))
     regimestats: Dict[str, Any] = {}
 
     for state in sorted(trades_with_regime["hmm_regime"].dropna().unique()):

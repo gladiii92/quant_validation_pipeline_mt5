@@ -234,7 +234,7 @@ def simulate_paths_from_trades(
     Parameters
     ----------
     trades_df : pd.DataFrame
-        Erwartet mindestens Spalten ['entrytime', 'pnl'].
+        Erwartet mindestens Spalten ['entry_time', 'pnl'].
     config : Dict[str, Any]
         Unterstruktur in config.yaml, z.B.:
 
@@ -261,20 +261,20 @@ def simulate_paths_from_trades(
     if trades_df.empty:
         raise ValueError("simulate_paths_from_trades: trades_df is empty.")
 
-    if "entrytime" not in trades_df.columns:
-        raise ValueError("trades_df must contain 'entrytime' column.")
+    if "entry_time" not in trades_df.columns:
+        raise ValueError("trades_df must contain 'entry_time' column.")
     if "pnl" not in trades_df.columns:
         raise ValueError("trades_df must contain 'pnl' column.")
 
     # ------------------------------------------------------------------
     # 1) Equity aus realen Trades -> Rückschluss auf Returns
     # ------------------------------------------------------------------
-    trades_sorted = trades_df.sort_values("entrytime").copy()
+    trades_sorted = trades_df.sort_values("entry_time").copy()
     # Annahme: gleich große Positionsgröße -> Equity ~ kumulative PnL
     # Initialkapital später von außen übergeben (Pipeline).
     initial_capital = float(config.get("initial_capital", 10_000.0))
     equity = initial_capital + trades_sorted["pnl"].cumsum().values
-    equity_series = pd.Series(equity, index=trades_sorted["entrytime"])
+    equity_series = pd.Series(equity, index=trades_sorted["entry_time"])
 
     # einfache Returns aus Equity
     eq_ret = equity_series.pct_change().dropna()

@@ -73,6 +73,42 @@ validation:
     test_window: 63     # ~3 Monate
     step_size: 21       # ~1 Monat Schritt
 
+
+# ============================================================
+# STOCHASTISCHE SZENARIEN (GBM / Heston / Jump-Diffusion)
+# ============================================================
+
+simulation:
+  # Zeithorizont eines Szenarios (in Jahren)
+  T_years: 1.0           # 1 Jahr
+  num_steps: 252         # 252 Handelstage
+  num_paths: 5000        # Anzahl Simulationen
+  random_state: 12345
+
+  heston:
+    kappa: 2.0
+    theta: 0.04
+    sigma: 0.3
+    rho: -0.7
+    v0: 0.04
+    r: 0.0               # risikofreier Zins, hier vernachlässigt
+
+  jumpdiffusion:
+    lambda_jump: 0.1     # erwartete Anzahl Jumps pro Jahr
+    mu_jump: -0.05       # durchschnittlicher Jump (log-Return)
+    sigma_jump: 0.1      # Volatilität der Jumps
+
+# ============================================================
+# HMM-REGIME-MODELL
+# ============================================================
+
+hmmregime:
+  enabled: true
+  nstates: 3          # z.B. 0=Bull, 1=Bear, 2=Neutral
+  niter: 1000
+  use_price_returns: false   # aktuell nutzen wir Equity-Returns
+
+
 # ============================================================
 # LOGGING
 # ============================================================
