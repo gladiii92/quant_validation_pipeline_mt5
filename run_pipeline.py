@@ -170,16 +170,14 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml") -> None
     # STEP 7b: HMM-Regime-Analyse
     # ------------------------------------------------------------------
     logger.info("STEP 7b Running HMM-based regime analysis...")
-    hmm_cfg = config.get("hmmregime", {})
+    hmmcfg = config.get('hmm_regime', {'n_regimes': 3, 'min_trades_per_regime': 20})
     hmm_results = analyze_hmm_regimes(
-        trades_df=trades_df,   # unverändertes trades_df mit entry_time
-        prices_df=None,
-        config={
-            **hmm_cfg,
-            "initial_capital": initial_capital,
-        },
+        trades_df, 
+        None,  # Optional: Preise laden falls verfügbar
+        hmmcfg, 
+        initial_capital
     )
-    logger.info("HMM regime analysis finished.")
+    logger.info(f"HMM regimes found: {len(hmm_results.regimestats) if hmm_results else 0}")
 
     # === SCHRITT 8: Walk-Forward / OOS-Analyse ===
     logger.info("\n[STEP 8] Running walk-forward analysis on trades...")
@@ -247,16 +245,18 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml") -> None
     # ------------------------------------------------------------------
     # STEP 9b: Stochastische Szenarien (GBM/Heston/Jump-Diffusion)
     # ------------------------------------------------------------------
-    logger.info("STEP 9b Running stochastic model scenarios (GBM/Heston/Jump-Diffusion)...")
-    sim_config = {
-        **config.get("simulation", {}),
-        "initial_capital": initial_capital,
-    }
-    sim_results = simulate_paths_from_trades(
-        trades_df=trades_df,     # in deiner alten Datei heißt das tradesdf
-        config=sim_config,
+    logger.info("STEP 9b Running stochastic model scenarios...")
+    simconfig = config.get('simulation', {
+        'models': ['gbm', 'heston', 'jump_diffusion'],
+        'nsims': 1000,
+        'nsteps': 252
+    })
+    simresults = simulate_paths_from_trades(
+        trades_df=trades_df, 
+        config=simconfig, 
+        initial_capital=initial_capital
     )
-    logger.info("Stochastic scenarios finished.")
+    logger.info(f"Stochastic scenarios: {list(simresults.keys())}")
 
     # === PLOTS (alle in strategy_reports_dir) ===
 
@@ -413,7 +413,7 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml") -> None
         "mc_results": mc_results,
         "walk_forward": wf_results,
         "multi_asset": multi_asset_info,
-        "simresults": sim_results,
+        "simresults": simresults,
         "hmmresults": hmm_results,
         "gate_result": {
             "status": result.status.value,
@@ -664,22 +664,21 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml") -> None
     wf_df = pd.DataFrame(wf_rows)
 
     # HMM Regime Tabelle
-    hmm_rows = []
-    for rname, m in hmm_results["regimestats"].items():
-        hmm_rows.append(
-            dict(
-                Regime=rname,
-                Trades=m["n_trades"],
-                TotalReturn=f"{m['total_return']:.2f}",
-                Sharpe=f"{m['sharpe_ratio']:.2f}",
-                MaxDD=f"{m['max_drawdown']:.2f}",
-                PF=f"{m['profit_factor']:.2f}",
-            )
-        )
-    hmm_df = pd.DataFrame(hmm_rows)
+    hmmrows = []
+    if hasattr(hmm_results, 'regimestats') and hmm_results.regimestats:
+        for rname, m in hmm_results.regimestats.items():  # ✅ Object-Attribut
+            hmmrows.append({
+                'Regime': rname,
+                'Trades': m['n_trades'],
+                'TotalReturn': f"{m['total_return']*100:.2f}%",
+                'Sharpe': f"{m['sharpe_ratio']:.2f}",
+                'MaxDD': f"{m['max_drawdown']*100:.2f}%", 
+                'PF': f"{m['profit_factor']:.2f}"
+            })
+    hmmdf = pd.DataFrame(hmmrows)
 
     sim_rows = []
-    for name, m in sim_results.items():
+    for name, m in simresults.items():
         sim_rows.append(
             dict(
                 Model=name,
@@ -723,8 +722,8 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml") -> None
             f.write("  (no walk-forward windows)\n\n")
 
         f.write("HMM REGIME PERFORMANCE\n")
-        if not hmm_df.empty:
-            f.write(hmm_df.to_markdown(index=False) + "\n\n")
+        if not hmmdf.empty:
+            f.write(hmmdf.to_markdown(index=False) + "\n\n")
         else:
             f.write("no HMM regimes with sufficient trades\n\n")
 

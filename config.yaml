@@ -16,11 +16,11 @@ project:
 data:
   # Welche Symbole willst du tracken?
   symbols:
-  - "EURUSD"
-  - "XAUUSD"
-  - "BTCUSD"
-  - "GBPUSD"
-  - "USDJPY"
+    - "EURUSD"
+    - "XAUUSD"
+    - "BTCUSD"
+    - "GBPUSD"
+    - "USDJPY"
 
   # Timeframes (M1=1min, M5=5min, H1=1hour, D1=daily, etc.)
   timeframes: ["M5", "M15", "H1", "D1"]
@@ -30,15 +30,15 @@ data:
 
   # MT5 Konfiguration
   mt5:
-  server: "ICMarkets-Live" # oder dein IC-Markets Server
-  timezone: "UTC"
-  history_folder: "data/raw"
+    server: "ICMarkets-Live" # oder dein IC-Markets Server
+    timezone: "UTC"
+    history_folder: "data/raw"
 
   # Speicher-Konfiguration (DuckDB + Parquet)
   storage:
-  type: "duckdb"
-  duckdb_path: "storage/market_data.duckdb"
-  parquet_path: "storage/parquet/"
+    type: "duckdb"
+    duckdb_path: "storage/market_data.duckdb"
+    parquet_path: "storage/parquet/"
 
 # ============================================================
 # BACKTEST PARAMETER
@@ -49,9 +49,9 @@ backtest:
   max_position_size: 0.01 # 1% pro Trade
   # Gebühren & Slippage (realistisch!)
   costs:
-  spread_pips: 1.5 # IC Markets typisch
-  commission: 0.0001 # 0.01% pro Seite
-  slippage_percent: 0.0003 # 0.03%
+    spread_pips: 1.5 # IC Markets typisch
+    commission: 0.0001 # 0.01% pro Seite
+    slippage_percent: 0.0003 # 0.03%
 
 # ============================================================
 # VALIDIERUNGS-SCHWELLEN (Decision Gates)
@@ -72,7 +72,6 @@ validation:
     train_window: 252   # ~1 Jahr tägliche Daten
     test_window: 63     # ~3 Monate
     step_size: 21       # ~1 Monat Schritt
-
 
 # ============================================================
 # STOCHASTISCHE SZENARIEN (GBM / Heston / Jump-Diffusion)
@@ -102,12 +101,12 @@ simulation:
 # HMM-REGIME-MODELL
 # ============================================================
 
-hmmregime:
+hmm_regime:
   enabled: true
-  nstates: 3          # z.B. 0=Bull, 1=Bear, 2=Neutral
+  nstates: 3              # z.B. 0=Bull, 1=Bear, 2=Neutral
   niter: 1000
-  use_price_returns: false   # aktuell nutzen wir Equity-Returns
-
+  min_trades_per_regime: 20
+  usepricereturns: false  # Equity-Returns aus Trades (SICHERER!)
 
 # ============================================================
 # LOGGING
@@ -117,9 +116,9 @@ logging:
   level: "INFO" # DEBUG, INFO, WARNING, ERROR, CRITICAL
   console: true
   file:
-  enabled: true
-  path: "logs/pipeline.log"
-  max_size_mb: 100
+    enabled: true
+    path: "logs/pipeline.log"
+    max_size_mb: 100
 
 # ============================================================
 # MODELL-ANNAHMEN (laden von YAML-Dateien)
@@ -128,4 +127,3 @@ logging:
 models:
   assumptions_folder: "models/assumptions/"
   regime_policy_file: "validation/regime_policy.yaml"
-

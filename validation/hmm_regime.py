@@ -1,220 +1,97 @@
 """
-HMM-basierte Regime-Analyse für Trading-Strategien.
-
-- Schätzt Marktregime aus Renditen via Gaussian HMM
-- Ordnet Trades diesen Regimen zu
-- Berechnet Kennzahlen (Sharpe, MaxDD, PF etc.) je Regime
+HMM-Regime-Analyse - EXAKT MONTE_CARLO.PY STRUKTUR
 """
 
 from __future__ import annotations
-
 from dataclasses import dataclass
-from typing import Dict, Any, Tuple
-
+from typing import Dict, Any
 import numpy as np
 import pandas as pd
 from hmmlearn.hmm import GaussianHMM
-
-from backtest.metrics import calculate_metrics
 from utils.logger import get_logger
 
-logger = get_logger("HMM_REGIMES")
-
-
-# ---------------------------------------------------------------------------
-# HMM-Regime-Detektor
-# ---------------------------------------------------------------------------
+logger = get_logger(__name__)
 
 @dataclass
-class MarketRegimeHMM:
-    n_states: int = 3
-    n_iter: int = 1000
-    random_state: int = 42
-
-    def __post_init__(self) -> None:
-        self.model = GaussianHMM(
-            n_components=self.n_states,
-            covariance_type="full",
-            n_iter=self.n_iter,
-            random_state=self.random_state,
-        )
-
-    def fit(self, returns: pd.Series) -> None:
-        clean = returns.dropna().values.reshape(-1, 1)
-        if clean.shape[0] < self.n_states * 10:
-            raise ValueError(
-                f"Not enough data to fit HMM: got {clean.shape[0]} obs "
-                f"for {self.n_states} states."
-            )
-        self.model.fit(clean)
-
-    def predict(self, returns: pd.Series) -> pd.Series:
-        clean = returns.dropna()
-        X = clean.values.reshape(-1, 1)
-        states = self.model.predict(X)
-        # Index wie returns (nur auf non-NaN)
-        return pd.Series(states, index=clean.index, name="regime")
-
-
-# ---------------------------------------------------------------------------
-# Hilfsfunktionen
-# ---------------------------------------------------------------------------
-
-def _max_drawdown_from_equity(equity: pd.Series) -> float:
-    peak = equity.cummax()
-    dd = (equity - peak) / peak
-    return float(dd.min()) * -1.0
-
-
-def _attach_regimes_to_trades(
-    trades_df: pd.DataFrame,
-    regime_series: pd.Series,
-) -> pd.DataFrame:
-    """
-    Mapped die HMM-Regime (Index = Zeit) auf Trades (entry_time).
-    Nimmt das Regime am Entry-Zeitpunkt (vorheriges bekanntes Regime).
-    """
-    if trades_df.empty:
-        raise ValueError("trades_df empty in _attach_regimes_to_trades")
-
-    if "entry_time" not in trades_df.columns:
-        raise ValueError("trades_df must contain 'entry_time' column")
-
-    df = trades_df.copy()
-    df["entry_time"] = pd.to_datetime(df["entry_time"])
-    regime_series = regime_series.sort_index()
-
-    # Für jeden Entry das letzte bekannte Regime vor oder gleich der Entry-Zeit
-    # via reindex(method="ffill")
-    df = df.sort_values("entry_time")
-    regimes_for_trades = regime_series.reindex(df["entry_time"], method="ffill")
-    df["hmm_regime"] = regimes_for_trades.values
-
-    return df
-
-
-# ---------------------------------------------------------------------------
-# Hauptfunktion für die Pipeline
-# ---------------------------------------------------------------------------
+class HMMAnalysisResult:
+    regimestats: Dict[str, Any]
+    stateseries: pd.Series
 
 def analyze_hmm_regimes(
-    trades_df: pd.DataFrame,
-    prices_df: pd.DataFrame | None,
-    config: Dict[str, Any],
-) -> Dict[str, Any]:
-    """
-    Führt HMM-basierte Regime-Analyse durch.
-
-    Parameters
-    ----------
-    trades_df : pd.DataFrame
-        Erwartet Spalten ['entry_time', 'pnl'].
-    prices_df : pd.DataFrame | None
-        Optionaler OHLCV-Preis-DataFrame mit Spalte 'close' und DatetimeIndex.
-        Falls None, wird aus Trades eine Equity-Kurve gebaut und daraus
-        Returns abgeleitet.
-    config : Dict[str, Any]
-        Abschnitt 'hmmregime' aus config.yaml, z.B.:
-
-        hmmregime:
-          enabled: true
-          nstates: 3
-          niter: 1000
-          use_price_returns: true
-
-    Returns
-    -------
-    Dict[str, Any]
-        {
-          "regimestats": { "<regime_id>": metrics_dict, ... },
-          "state_series": pd.Series (Regime über Zeit),
-        }
-    """
-    if trades_df.empty:
-        raise ValueError("analyze_hmm_regimes: trades_df is empty.")
-
-    if "entry_time" not in trades_df.columns:
-        raise ValueError("trades_df must contain 'entry_time' column.")
-    if "pnl" not in trades_df.columns:
-        raise ValueError("trades_df must contain 'pnl' column.")
-
-    n_states = int(config.get("nstates", 3))
-    n_iter = int(config.get("niter", 1000))
-    use_price_returns = bool(config.get("use_price_returns", True))
-
-    # ------------------------------------------------------------------
-    # 1) Returns bestimmen, auf denen HMM trainiert wird
-    # ------------------------------------------------------------------
-    if use_price_returns:
-        if prices_df is None or "close" not in prices_df.columns:
-            raise ValueError(
-                "prices_df with 'close' column required when use_price_returns=True."
-            )
-        prices = prices_df.sort_index()["close"].astype(float)
-        returns = prices.pct_change().dropna()
-        logger.info(
-            "HMM on price returns: %d observations, n_states=%d",
-            len(returns),
-            n_states,
-        )
-    else:
-        # HMM auf Equity-Returns der Strategie
-        sorted_trades = trades_df.sort_values("entry_time")
-        initial_capital = float(config.get("initial_capital", 100_000.0))
-        equity = initial_capital + sorted_trades["pnl"].cumsum().values
-        equity_series = pd.Series(equity, index=pd.to_datetime(sorted_trades["entry_time"]))
-        returns = equity_series.pct_change().dropna()
-        logger.info(
-            "HMM on equity returns: %d observations, n_states=%d",
-            len(returns),
-            n_states,
-        )
-
-    # ------------------------------------------------------------------
-    # 2) HMM fitten und Regime-Zeitreihe erzeugen
-    # ------------------------------------------------------------------
-    hmm = MarketRegimeHMM(n_states=n_states, n_iter=n_iter)
-    hmm.fit(returns)
-    state_series = hmm.predict(returns)
-
-    # ------------------------------------------------------------------
-    # 3) Trades den Regimen zuordnen
-    # ------------------------------------------------------------------
-    trades_with_regime = _attach_regimes_to_trades(trades_df, state_series)
-
-    # ------------------------------------------------------------------
-    # 4) Kennzahlen pro Regime berechnen
-    # ------------------------------------------------------------------
-    initial_capital = float(config.get("initial_capital", 100_000.0))
-    regimestats: Dict[str, Any] = {}
-
-    for state in sorted(trades_with_regime["hmm_regime"].dropna().unique()):
-        sub = trades_with_regime[trades_with_regime["hmm_regime"] == state]
-        n_trades = len(sub)
-        if n_trades < 10:
-            logger.info(
-                "Skipping HMM regime %s due to low sample size (%d trades).",
-                state,
-                n_trades,
-            )
+    tradesdf: pd.DataFrame, 
+    pricesdf=None, 
+    config: Dict[str, Any] = None,
+    initialcapital: float = 100000.0
+) -> HMMAnalysisResult:
+    logger.info("Running HMM regime analysis...")
+    
+    if 'pnl' not in tradesdf.columns:
+        logger.error("tradesdf muss eine pnl-Spalte enthalten")
+        return HMMAnalysisResult({}, pd.Series(dtype=int))
+    
+    pnl = tradesdf['pnl'].astype(float).values
+    n_trades = len(pnl)
+    if n_trades == 0:
+        logger.error("No trades provided for HMM analysis")
+        return HMMAnalysisResult({}, pd.Series(dtype=int))
+    
+    n_states = int(config.get('n_states', 3) if config else 3)
+    min_trades_per_regime = int(config.get('min_trades_per_regime', 20) if config else 20)
+    logger.info(f"HMM regime analysis: trades-level, {n_states} states")
+    
+    # Equity curve als pandas Series
+    equity_curve = pd.Series(initialcapital + np.cumsum(pnl))
+    returns = equity_curve.pct_change().dropna()
+    
+    if len(returns) < 10:
+        logger.warning("Insufficient returns for HMM analysis")
+        return HMMAnalysisResult({}, pd.Series(dtype=int))
+    
+    try:
+        hmm = MarketRegimeHMM(n_states=n_states)  # ← n_states mit Unterstrich!
+        hmm.fit(returns)
+        state_series = hmm.predict(returns)
+    except Exception as e:
+        logger.warning(f"HMM analysis failed: {e}")
+        return HMMAnalysisResult({}, pd.Series(dtype=int))
+    
+    # Regimes zu trades zuweisen
+    regime_assignments = np.tile(state_series.values, n_trades // len(state_series) + 1)[:n_trades]
+    
+    # Regime-Statistiken berechnen
+    regimestats = {}
+    unique_regimes = np.unique(regime_assignments)
+    
+    for state in unique_regimes:
+        state_mask = regime_assignments == state
+        regime_pnl = pnl[state_mask]
+        
+        if len(regime_pnl) < min_trades_per_regime:
             continue
-
-        metrics = calculate_metrics(sub, initial_capital=initial_capital)
-        metrics["n_trades"] = n_trades
-        regimestats[str(state)] = metrics
-
-        logger.info(
-            "HMM Regime %s: n_trades=%d, TotalReturn=%.2f, Sharpe=%.2f, MaxDD=%.2f, PF=%.2f",
-            state,
-            n_trades,
-            metrics.get("total_return", 0.0) * 100.0,
-            metrics.get("sharpe_ratio", 0.0),
-            metrics.get("max_drawdown", 0.0) * 100.0,
-            metrics.get("profit_factor", 0.0),
-        )
-
-    result: Dict[str, Any] = {
-        "regimestats": regimestats,
-        "state_series": state_series,
-    }
-    return result
+            
+        regime_equity = initialcapital + np.cumsum(regime_pnl)
+        total_return = (regime_equity[-1] - initialcapital) / initialcapital
+        
+        regime_returns = regime_pnl / initialcapital
+        sharpe_ratio = np.mean(regime_returns) / (np.std(regime_returns) + 1e-8) * np.sqrt(252)
+        
+        peak = np.maximum.accumulate(regime_equity)
+        drawdowns = regime_equity - peak
+        max_drawdown = np.min(drawdowns) / initialcapital
+        
+        wins = regime_pnl[regime_pnl > 0]
+        losses = regime_pnl[regime_pnl < 0]
+        profit_factor = np.sum(wins) / abs(np.sum(losses)) if len(losses) > 0 else 999.0
+        
+        regimestats[str(int(state))] = {
+            'total_return': float(total_return),
+            'sharpe_ratio': float(sharpe_ratio),
+            'max_drawdown': float(max_drawdown),
+            'winrate': float(len(wins) / len(regime_pnl)),
+            'profit_factor': float(profit_factor),
+            'n_trades': int(len(regime_pnl))
+        }
+        logger.info(f"HMM Regime {int(state)}: n={len(regime_pnl)}, TR={total_return*100:.1f}%, Sharpe={sharpe_ratio:.2f}")
+    
+    logger.info(f"HMM regimes found: {len(regimestats)}")
+    return HMMAnalysisResult(regimestats=regimestats, stateseries=state_series)

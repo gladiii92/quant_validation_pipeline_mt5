@@ -415,30 +415,27 @@ def render_html_for_strategy_dir(strategy_dir: Path) -> Path:
     violated = gate.get("violated_criteria", []) or gate.get("violatedcriteria", [])
 
     # Badge-Statusklasse
-    if gate_status == "LIVE_ELIGIBLE":
-        status_class = "status-live"
-    elif gate_status in ("WATCHLIST", "REVIEW"):
-        status_class = "status-warning"
-    else:
-        status_class = "status-fail"
+    violated_any = bool(gate_reason or violated)
+    status_display = gate_status if not violated_any else 'WATCHLIST'
+    statusclass = 'status-live' if status_display == 'LIVE_ELIGIBLE' else 'status-warning' if status_display in ['WATCHLIST', 'REVIEW'] else 'status-fail'
 
     # Header / Summary
     html_parts = []
 
     header_html = f"""
     <div class="header">
-      <div class="header-title">
+    <div class="header-title">
         <h1>QUANT VALIDATION DASHBOARD</h1>
-        <p>Strategie: <strong>{strategy_name}</strong> &middot; Zeitraum:
-           {date_range[0]} – {date_range[1]} &middot; Trades: {total_trades}</p>
-      </div>
-      <div>
-        <div class="badge {status_class}">
-          <span class="badge-dot"></span>
-          <span>{gate_status}</span>
-          <span>| Confidence: {gate_confidence:.0%}</span>
+        <p>Strategie: <strong>{strategy_name}</strong> · Zeitraum: 
+        {date_range[0]} – {date_range[1]} · Trades: {total_trades}</p>
+    </div>
+    <div>
+        <div class="badge status-{statusclass}">
+        <span class="badge-dot"></span>
+        <span>{status_display}</span>
+        <span>Confidence {gate_confidence:.0f}%</span>
         </div>
-      </div>
+    </div>
     </div>
     """
 
@@ -447,8 +444,7 @@ def render_html_for_strategy_dir(strategy_dir: Path) -> Path:
 
     <div class="card">
         <div class="card-header">
-        <div class="card-kicker">Full Sample</div>
-        <div class="card-title">Gesamtrendite</div>
+        <div class="card-title">Gesamt-Rendite</div>
         </div>
         <div class="card-body">
         <div class="metric-value">{total_return*100:.2f}%</div>
@@ -461,8 +457,7 @@ def render_html_for_strategy_dir(strategy_dir: Path) -> Path:
 
     <div class="card">
         <div class="card-header">
-        <div class="card-kicker">Risiko-adjustiert</div>
-        <div class="card-title">Sharpe Ratio</div>
+        <div class="card-title">Sharpe-Ratio</div>
         </div>
         <div class="card-body">
         <div class="metric-value">{sharpe:.2f}</div>
@@ -475,8 +470,7 @@ def render_html_for_strategy_dir(strategy_dir: Path) -> Path:
 
     <div class="card">
         <div class="card-header">
-        <div class="card-kicker">Full Sample</div>
-        <div class="card-title">Max Drawdown</div>
+        <div class="card-title">Max-Drawdown</div>
         </div>
         <div class="card-body">
         <div class="metric-value">{max_dd*100:.2f}%</div>
@@ -489,8 +483,7 @@ def render_html_for_strategy_dir(strategy_dir: Path) -> Path:
 
     <div class="card">
         <div class="card-header">
-        <div class="card-kicker">Full Sample</div>
-        <div class="card-title">Win Rate</div>
+        <div class="card-title">Win-Rate in %</div>
         </div>
         <div class="card-body">
         <div class="metric-value">{win_rate*100:.2f}%</div>
@@ -503,7 +496,6 @@ def render_html_for_strategy_dir(strategy_dir: Path) -> Path:
 
     <div class="card">
         <div class="card-header">
-        <div class="card-kicker">Walk-Forward</div>
         <div class="card-title">OOS Sharpe</div>
         </div>
         <div class="card-body">
@@ -517,8 +509,7 @@ def render_html_for_strategy_dir(strategy_dir: Path) -> Path:
 
     <div class="card">
         <div class="card-header">
-        <div class="card-kicker">Positiv-Wahrscheinlichkeit</div>
-        <div class="card-title">Monte Carlo</div>
+        <div class="card-title">Monte-Carlo</div>
         </div>
         <div class="card-body">
         <div class="metric-value">{mc_pos_prob*100:.1f}%</div>
@@ -531,8 +522,7 @@ def render_html_for_strategy_dir(strategy_dir: Path) -> Path:
 
     <div class="card">
         <div class="card-header">
-        <div class="card-kicker">Worst-Case-Rendite</div>
-        <div class="card-title">Monte Carlo P95</div>
+        <div class="card-title">Monte-Carlo-P95</div>
         </div>
         <div class="card-body">
         <div class="metric-value">{mc_p95_ret*100:.1f}%</div>
@@ -545,7 +535,6 @@ def render_html_for_strategy_dir(strategy_dir: Path) -> Path:
 
     <div class="card">
         <div class="card-header">
-        <div class="card-kicker">Worst X% der Fälle</div>
         <div class="card-title">Tail-Risk CVaR</div>
         </div>
         <div class="card-body">
@@ -890,59 +879,67 @@ def render_html_for_strategy_dir(strategy_dir: Path) -> Path:
         )
     sim_df = pd.DataFrame(sim_rows)
 
-    # Multi-Asset-Tabelle (falls vorhanden)
-    ma_df = None
-    if multi_asset and multi_asset.get("details"):
-        ma_df = pd.DataFrame(multi_asset["details"])
-        # Nur relevante Spalten sortiert
-        keep_cols = [c for c in ["symbol", "sharpe", "profit", "profit_factor", "equity_dd_pct", "trades"] if c in ma_df.columns]
-        ma_df = ma_df[keep_cols].sort_values("sharpe", ascending=False)
+    multiasset = summary.get('multiasset', None) or {}
+    multiasset_details = multiasset.get('details', [])
+    hit_rate = multiasset.get('hit_rate', 0.0)
 
-    models_html = f"""
-    <h2 class="section-title">Modelle & Asset-Robustheit</h2>
-    <div class="grid grid-2">
-      <div class="card">
-        <div class="card-header">Stochastische Szenarien<span>GBM / Heston / Jump-Diffusion</span></div>
-        <div class="card-body">
-          {df_to_html(sim_df, index=False, title="Stochastic Model Scenarios")}
-          <div class="explanation">
-            <h4>Einfach erklärt</h4>
-            <p>
-              <strong>GBM</strong> (Geometric Brownian Motion) ist ein Standardmodell
-              für zufällige Preisbewegungen mit konstanter Volatilität.
-              <strong>Heston</strong> erlaubt schwankende Volatilität und bildet
-              turbulente Marktphasen realistischer ab.
-              <strong>Jump-Diffusion</strong> kombiniert normale Schwankungen mit
-              plötzlichen Sprüngen (News, Flash-Crashes).
-            </p>
-            <p style="margin-top:6px;">
-              Die Tabelle zeigt, wie die Strategie in diesen künstlichen
-              Stress-Szenarien performen würde: Median-Rendite, Perzentile
-              (P5/P95) und typische bzw. extreme Drawdowns.
-            </p>
-          </div>
-        </div>
-      </div>
+    # DataFrame nur wenn Details vorhanden
+    madf = None
+    if multiasset_details:
+        madf = pd.DataFrame(multiasset_details)
+        if not madf.empty and 'sharpe' in madf.columns:
+            madf = madf.sort_values('sharpe', ascending=False)
+            top_symbols = ', '.join(madf.head(3)['symbol'].astype(str).tolist())
+        else:
+            top_symbols = 'Keine gültigen Daten'
+    else:
+        top_symbols = 'Keine Multi-Asset Analyse'
 
-      <div class="card">
-        <div class="card-header">Multi-Asset Optimizer<span>Übertragbarkeit auf andere Märkte</span></div>
+    # Multi-Asset
+    multiasset_html = f"""
+    <div class="grid grid-2" style="gap: 24px;">
+    <!-- Sharpe-Rangliste (DEIN DESIGN) -->
+    <div class="card">
+        <div class="card-header">Sharpe-Rangliste<span>{len(multiasset_details)} Assets sortiert</span></div>
         <div class="card-body">
-          {df_to_html(ma_df, index=False, title="Multi-Asset Symbol Stats") if ma_df is not None else "<p>Keine Multi-Asset-Details vorhanden.</p>"}
-          <div class="explanation">
-            <h4>Einfach erklärt</h4>
-            <p>
-              Diese Tabelle zeigt, wie die Strategie in verschiedenen Symbolen
-              (z.&nbsp;B. USDJPY, EURUSD, XAUUSD) abgeschnitten hat.
-              Eine hohe Sharpe über viele Symbole hinweg deutet auf ein
-              robustes Grundprinzip hin. Negative oder schwache Symbole
-              können aus dem Live-Portfolio ausgeschlossen werden.
-            </p>
-          </div>
+        <div class="metric-value" style="font-size: 18px; margin-bottom: 8px;">✅ TOP 3 PROFITABEL ({hit_rate:.1f}% Hit-Rate)</div>
+        
+        <!-- TOP 3 DYNAMISCH -->
+        <div style="margin-bottom: 20px;">
+            {''.join([f'''
+            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
+            <div style="width: 250px; height: 20px; background: linear-gradient(to right, #22c55e 85%, #4ade80 85%); border-radius: 10px; box-shadow: 0 2px 4px rgba(34,197,94,0.3);"></div>
+            <div style="min-width: 120px;">
+                <div><strong>{row['symbol']}</strong> <span style="color: #059669;">Sharpe {row['sharpe']:.2f}</span></div>
+                <div style="font-size: 12px; color: var(--text-muted);">{row.get('profit', 0):.0f}€ | {row.get('trades', 0)} Trades</div>
+            </div>
+            </div>''' for row in (multiasset_details[:3] if multiasset_details else [])])}
         </div>
-      </div>
+
+        <!-- Hit-Rate Badge -->
+        <div class="badge" style="margin-top: 16px; background: var(--accent-soft); color: var(--accent); font-size: 14px;">
+            📊 <strong>{len([d for d in multiasset_details if d.get('sharpe', 0) > 0])}/{len(multiasset_details)}</strong> = {hit_rate:.0f}% Hit-Rate
+        </div>
+        </div>
+    </div>
+
+    <!-- Decision Gate (DEIN DESIGN) -->
+    <div class="card">
+        <div class="card-header">Decision Gate Status<span>Aktuelle Bewertung</span></div>
+        <div class="card-body">
+        <div class="metric-value" style="font-size: 32px; color: var(--warning);">🟡 WARNUNG</div>
+        <p style="margin-top: 12px; font-size: 14px;">
+            <strong>Multi-Asset Hit-Rate:</strong> <span style="color: var(--danger);">{hit_rate:.1f}%</span> < 75.0%
+        </p>
+        <div style="margin-top: 16px; padding: 12px; background: rgba(254, 243, 199, 0.3); border-radius: 8px; border-left: 4px solid var(--warning);">
+            <strong>→ Empfehlung:</strong> Live nur mit <strong>{top_symbols}</strong> starten
+        </div>
+        </div>
+    </div>
     </div>
     """
-    html_parts.append(models_html)
+
+    html_parts.append(multiasset_html)
 
     # ========================================================
     # Footer & Datei schreiben

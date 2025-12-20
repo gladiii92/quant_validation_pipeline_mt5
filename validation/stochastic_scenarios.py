@@ -224,6 +224,7 @@ def _metrics_from_equity_paths(
 def simulate_paths_from_trades(
     trades_df: pd.DataFrame,
     config: Dict[str, Any],
+    initial_capital: float = 100000.0, 
 ) -> Dict[str, Dict[str, float]]:
     """
     Haupt-Einstiegspunkt für die Pipeline.

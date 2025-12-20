@@ -15,7 +15,7 @@ logger = get_logger(__name__)
 
 def run_monte_carlo_on_trades(
     trades_df: pd.DataFrame, 
-    initial_capital: float = 10000.0, 
+    initial_capital: float = 100000.0, 
     n_sims: int = 5000, 
     random_state: int = 42,
 ) -> Dict[str, Any]:
