@@ -123,6 +123,11 @@ Die Pipeline ist datenquellen-agnostisch. MT5 ist als Adapter implementiert – 
 | **Report**                | `report.txt`            |
 | **Dashboard**             | `dashboard.html`        |
 
+# Hier eine kleine Übersicht:
+<img width="1200" height="600" alt="equity" src="https://github.com/user-attachments/assets/ef31a08b-b58e-43a2-b142-b25059b3bf37" />
+<img width="2380" height="1178" alt="mc_paths" src="https://github.com/user-attachments/assets/f9f61492-99ab-4d71-ab77-a2f675b93493" />
+
+
 
 ---
 
