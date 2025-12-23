@@ -55,9 +55,8 @@ def extract_strategy_name_from_optimizer(xml_path: str) -> str:
 
 def parse_mt5_optimizer_xml(xml_path: str) -> pd.DataFrame:
     """
-    Parst den MT5-Optimizer-Export (Tester Optimizator Results) im XML/Excel-XML-Format.
-
-    Erwartete Header:
+    Parst den MT5-Optimizer-Export (Excel-XML).
+    Erwartet die Tabelle mit den Spalten:
     Symbol, Pass, Result, Profit, Expected Payoff, Profit Factor,
     Recovery Factor, Sharpe Ratio, Custom, Equity DD %, Trades
     """
@@ -72,32 +71,37 @@ def parse_mt5_optimizer_xml(xml_path: str) -> pd.DataFrame:
     tree = ET.parse(path)
     root = tree.getroot()
 
-    # Worksheet "Tester Optimizator Results"
-    ws = root.find(".//ss:Worksheet[@ss:Name='Tester Optimizator Results']", ns)
+    # Worksheet suchen – einige MT5-Builds verwenden "Tester Optimizer Results",
+    # andere "Tester Optimizator Results"
+    ws = None
+    for name in ("Tester Optimizer Results", "Tester Optimizator Results"):
+        ws = root.find(f".//ss:Worksheet[@ss:Name='{name}']", ns)
+        if ws is not None:
+            break
     if ws is None:
-        raise ValueError("Worksheet 'Tester Optimizator Results' not found in XML.")
+        raise ValueError("Optimizer worksheet 'Tester Optimizer Results' not found in XML.")
 
     table = ws.find("ss:Table", ns)
     if table is None:
-        raise ValueError("Table not found in 'Tester Optimizator Results' worksheet.")
+        raise ValueError("Table not found in optimizer worksheet.")
 
     rows = table.findall("ss:Row", ns)
-    if not rows or len(rows) < 2:
+    if not rows or len(rows) <= 1:
         return pd.DataFrame()
 
-    data_rows = rows[1:]  # erste Zeile ist Header
-
+    data_rows = rows[1:]  # erste Zeile = Header
     parsed = []
+
     for row in data_rows:
         cells = row.findall("ss:Cell", ns)
         if not cells:
             continue
+
         values = []
         for c in cells:
             d = c.find("ss:Data", ns)
             values.append(d.text if d is not None else None)
 
-        # Leere Zeilen überspringen
         if not values or values[0] is None:
             continue
 
@@ -112,13 +116,13 @@ def parse_mt5_optimizer_xml(xml_path: str) -> pd.DataFrame:
                     "profit_factor": float(values[5]),
                     "recovery_factor": float(values[6]),
                     "sharpe": float(values[7]),
-                    "custom": float(values[8]) if values[8] is not None else 0.0,
+                    "custom": float(values[8]) if len(values) > 8 and values[8] is not None else 0.0,
                     "equity_dd_pct": float(values[9]),
                     "trades": int(values[10]),
                 }
             )
         except (IndexError, ValueError):
-            # Falls MetaQuotes etwas am Format ändert, Zeile überspringen
+            # Zeilen mit unerwartetem Format einfach überspringen
             continue
 
     return pd.DataFrame(parsed)
@@ -130,9 +134,10 @@ def compute_multi_asset_stats(df: pd.DataFrame, sharpe_threshold: float = 1.0) -
     """
     if df.empty:
         return {
-            "hit_rate": 0.0,
-            "n_symbols": 0,
-            "n_symbols_pass": 0,
+            "hitrate": float,
+            "nsymbols": int,
+            "nsymbols_pass": int,
+            "sharpe_threshold": float,
             "sharpe_threshold": sharpe_threshold,
         }
 

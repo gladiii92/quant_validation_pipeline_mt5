@@ -177,7 +177,7 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml") -> None
         hmmcfg, 
         initial_capital
     )
-    logger.info(f"HMM regimes found: {len(hmm_results.regimestats) if hmm_results else 0}")
+    logger.info(f"HMM regimes found: {len(hmm_results.regime_stats) if hmm_results else 0}")
 
     # === SCHRITT 8: Walk-Forward / OOS-Analyse ===
     logger.info("\n[STEP 8] Running walk-forward analysis on trades...")
@@ -251,12 +251,12 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml") -> None
         'nsims': 1000,
         'nsteps': 252
     })
-    simresults = simulate_paths_from_trades(
+    sim_results = simulate_paths_from_trades(
         trades_df=trades_df, 
         config=simconfig, 
         initial_capital=initial_capital
     )
-    logger.info(f"Stochastic scenarios: {list(simresults.keys())}")
+    logger.info(f"Stochastic scenarios: {list(sim_results.keys())}")
 
     # === PLOTS (alle in strategy_reports_dir) ===
 
@@ -296,7 +296,7 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml") -> None
 
 
     # Equity Curve
-    logger.info("[PLOT] Saving equity curve...")
+    logger.info("PLOT Saving equity curve...")
     eq = trades_df["pnl"].cumsum() + initial_capital
     plt.figure(figsize=(8, 4))
     plt.plot(eq.index, eq.values)
@@ -306,13 +306,43 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml") -> None
     eq_path = reports_dir / "equity.png"
     plt.savefig(eq_path, dpi=150)
     plt.close()
-    logger.info("✅ Equity curve saved to %s", eq_path)
+    logger.info("Equity curve saved to %s", eq_path)
+
+    # NEU: HMM‑Regime‑Overlay, falls Ergebnisse vorhanden
+    if hmm_results is not None and not hmm_results.state_series.empty:
+        logger.info("[PLOT] Saving HMM regime overlay...")
+        hmm_plot_path = reports_dir / "hmm_regime_overlay.png"
+
+        # state_series hat Index der Returns (also ab zweitem Trade).
+        # Auf Trade-Index abbilden:
+        states = hmm_results.state_series.copy()
+        states.index = trades_df.index[-len(states):]  # hinten ausrichten
+
+        eq = trades_df["pnl"].cumsum() + initial_capital
+
+        plt.figure(figsize=(10, 4))
+        plt.plot(eq.index, eq.values, color="white", linewidth=1.5, label="Equity")
+
+        unique_states = sorted(states.dropna().unique())
+        colors = plt.cm.tab10(range(len(unique_states)))
+
+        for s, c in zip(unique_states, colors):
+            mask = states == s
+            plt.scatter(states.index[mask], eq.loc[states.index[mask]], s=8, color=c, label=f"Regime {s}", alpha=0.7)
+
+        plt.title("Equity Curve with HMM Regimes")
+        plt.ylabel("Equity")
+        plt.legend(loc="upper left", fontsize=8)
+        plt.tight_layout()
+        plt.savefig(hmm_plot_path, dpi=150)
+        plt.close()
+        logger.info("✅ HMM overlay saved to %s", hmm_plot_path)
 
     # VIX Regime Sharpe
-    logger.info("[PLOT] Saving VIX regime Sharpe barplot...")
-    vix_stats = vix_alignment["regime_stats"]
-    names = list(vix_stats.keys())
-    sharpes = [vix_stats[n]["sharpe_ratio"] for n in names]
+    logger.info("PLOT Saving VIX regime Sharpe barplot...")
+    vixstats = vix_alignment["regime_stats"]
+    names = list(vixstats.keys())
+    sharpes = [vixstats[n]["sharpe_ratio"] for n in names]
     plt.figure(figsize=(6, 4))
     plt.bar(names, sharpes)
     plt.title("Sharpe by VIX Regime")
@@ -321,7 +351,28 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml") -> None
     vix_plot_path = reports_dir / "vix_regime_sharpe.png"
     plt.savefig(vix_plot_path, dpi=150)
     plt.close()
-    logger.info("✅ VIX regime Sharpe plot saved to %s", vix_plot_path)
+    logger.info("VIX regime Sharpe plot saved to %s", vix_plot_path)
+
+    # NEU: Zeitreihen‑Plot der VIX‑Regime
+    logger.info("PLOT Saving VIX regime time series...")
+    vix_ts_path = reports_dir / "vix_regime_timeseries.png"
+
+    # vix_regimes ist eine Series mit name 'vix_regime'
+    vix_series = vix_regimes.sort_index()  # nur zur Sicherheit
+    plt.figure(figsize=(10, 4))
+    plt.step(vix_series.index, pd.Categorical(vix_series).codes, where="post")
+    plt.yticks(
+        ticks=range(len(vix_series.unique())),
+        labels=list(vix_series.unique())
+    )
+    plt.title("VIX Regime over time")
+    plt.xlabel("Date")
+    plt.ylabel("Regime")
+    plt.tight_layout()
+    plt.savefig(vix_ts_path, dpi=150)
+    plt.close()
+    logger.info("VIX regime time series saved to %s", vix_ts_path)
+    
 
     # Walk-Forward Sharpe per Window
     logger.info("[PLOT] Saving Walk-Forward Sharpe by window...")
@@ -413,8 +464,8 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml") -> None
         "mc_results": mc_results,
         "walk_forward": wf_results,
         "multi_asset": multi_asset_info,
-        "simresults": simresults,
-        "hmmresults": hmm_results,
+        "sim_results": sim_results,
+        "hmm_results": hmm_results,
         "gate_result": {
             "status": result.status.value,
             "confidence": result.confidence,
@@ -678,7 +729,7 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml") -> None
     hmmdf = pd.DataFrame(hmmrows)
 
     sim_rows = []
-    for name, m in simresults.items():
+    for name, m in sim_results.items():
         sim_rows.append(
             dict(
                 Model=name,
