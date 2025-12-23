@@ -1,42 +1,39 @@
 """
-Kelly-basiertes Positionssizing aus empirischen Trade-Daten.
+Kelly-Analyse für Trade-Sequenzen.
+
+Anpassung:
+- Kelly-Fraction wird auf praxisnahe Maxima gecappt (Standard: 2 %).
+- Rückgabe enthält bereits gerundete Werte (Basispunkte).
 """
 
-from typing import Dict, Any
-
+from __future__ import annotations
+from typing import Dict
 import numpy as np
 import pandas as pd
 
-from utils.logger import get_logger
 
-logger = get_logger(__name__)
-
-
-def estimate_kelly_from_trades(trades_df: pd.DataFrame) -> Dict[str, Any]:
+def _kelly_from_winrate_payoff(p: float, b: float) -> float:
     """
-    Schätzt Kelly-Quote aus Trade-PnLs.
+    Klassische Kelly-Formel: f* = (p * (b + 1) - 1) / b.
 
-    Args:
-        trades_df: DataFrame mit Spalte 'pnl'.
-
-    Returns:
-        Dict mit:
-        - win_rate
-        - avg_win
-        - avg_loss (positiv)
-        - payoff_ratio
-        - kelly_full, kelly_half, kelly_quarter
+    p : Gewinnwahrscheinlichkeit (0..1)
+    b : Payoff-Ratio (avg_win / |avg_loss|)
     """
-    if "pnl" not in trades_df.columns:
-        raise ValueError("trades_df must contain 'pnl' column")
+    if b <= 0.0:
+        return 0.0
+    f_star = (p * (b + 1.0) - 1.0) / b
+    return max(f_star, 0.0)
 
-    pnl = trades_df["pnl"].astype(float)
 
-    wins = pnl[pnl > 0]
-    losses = pnl[pnl < 0]
+def estimate_kelly_from_trades(
+    trades_df: pd.DataFrame, max_fraction: float = 0.02
+) -> Dict[str, float]:
+    """
+    Schätzt Kelly-Fraction aus Trade-PnLs.
 
-    if len(pnl) == 0 or len(wins) == 0 or len(losses) == 0:
-        logger.warning("Not enough wins/losses to estimate Kelly")
+    max_fraction: Obergrenze pro Trade (z.B. 0.01 = 1 %, 0.02 = 2 %).
+    """
+    if trades_df.empty or "pnl" not in trades_df.columns:
         return {
             "win_rate": 0.0,
             "avg_win": 0.0,
@@ -47,37 +44,42 @@ def estimate_kelly_from_trades(trades_df: pd.DataFrame) -> Dict[str, Any]:
             "kelly_quarter": 0.0,
         }
 
-    win_rate = len(wins) / len(pnl)
-    loss_rate = 1.0 - win_rate
+    pnl = trades_df["pnl"].astype(float)
+    wins = pnl[pnl > 0.0]
+    losses = pnl[pnl < 0.0]
 
-    avg_win = wins.mean()
-    avg_loss = -losses.mean()  # positive Zahl
+    if wins.empty or losses.empty:
+        return {
+            "win_rate": 0.0,
+            "avg_win": 0.0,
+            "avg_loss": 0.0,
+            "payoff_ratio": 0.0,
+            "kelly_full": 0.0,
+            "kelly_half": 0.0,
+            "kelly_quarter": 0.0,
+        }
 
-    payoff_ratio = avg_win / avg_loss if avg_loss > 0 else 0.0
+    p = float(len(wins) / len(pnl))
+    avg_win = float(wins.mean())
+    avg_loss = float(losses.mean())  # negativ
+    payoff = float(avg_win / abs(avg_loss))
 
-    if payoff_ratio > 0:
-        kelly_full = win_rate - (loss_rate / payoff_ratio)
-    else:
-        kelly_full = 0.0
+    raw_kelly = _kelly_from_winrate_payoff(p, payoff)
 
-    kelly_full = float(np.clip(kelly_full, 0.0, 1.0))
+    # Praxis: harte Obergrenze, z.B. 2 % pro Trade
+    capped_kelly = min(raw_kelly, max_fraction)
 
-    result = {
-        "win_rate": float(win_rate),
-        "avg_win": float(avg_win),
-        "avg_loss": float(avg_loss),
-        "payoff_ratio": float(payoff_ratio),
-        "kelly_full": kelly_full,
-        "kelly_half": kelly_full * 0.5,
-        "kelly_quarter": kelly_full * 0.25,
+    # Werte runden (Basispunkte)
+    k_full = round(capped_kelly, 4)
+    k_half = round(capped_kelly / 2.0, 4)
+    k_quarter = round(capped_kelly / 4.0, 4)
+
+    return {
+        "win_rate": round(p, 4),
+        "avg_win": avg_win,
+        "avg_loss": abs(avg_loss),
+        "payoff_ratio": round(payoff, 4),
+        "kelly_full": k_full,
+        "kelly_half": k_half,
+        "kelly_quarter": k_quarter,
     }
-
-    logger.info("Kelly estimation from trades:")
-    logger.info("  win_rate: %.2f%%", result["win_rate"] * 100)
-    logger.info("  avg_win: %.2f, avg_loss: %.2f", result["avg_win"], result["avg_loss"])
-    logger.info("  payoff_ratio: %.2f", result["payoff_ratio"])
-    logger.info("  kelly_full: %.2f%%", result["kelly_full"] * 100)
-    logger.info("  kelly_half: %.2f%%", result["kelly_half"] * 100)
-    logger.info("  kelly_quarter: %.2f%%", result["kelly_quarter"] * 100)
-
-    return result
