@@ -80,7 +80,6 @@ def df_to_table_html(df: Optional[pd.DataFrame]) -> str:
             elif isinstance(val, (int,)) or (
                 isinstance(val, float) and float(val).is_integer()
             ):
-                # Ganze Zahlen wie Trades ohne Nachkommastellen
                 html.append(f"<td>{int(val)}</td>")
             elif isinstance(val, float):
                 html.append(f"<td>{val:.3f}</td>")
@@ -1028,6 +1027,189 @@ def generate_html_report(summary_path: Path, output_dir: Path, strategy_name: st
     html.append("</div>")  # card-body
     html.append("</div>")  # card
     html.append("</div>")  # grid-2
+
+    # ------------------------------------------------------------------
+    # Live-Tauglichkeit: Risk-Radar (VOLLE ERWEITERUNG)
+    # ------------------------------------------------------------------
+    html.append('<h2 class="section-title">🔥 LIVE-TAUGLICHKEIT – Risk-Radar</h2>')
+    html.append('<div class="grid grid-2">')
+
+    # Card 1: Kernmetriken (erweitert mit OOS + Schwellen)
+    html.append('<div class="card">')
+    html.append(
+        '<div class="card-header"><div class="card-title">'
+        'Kernmetriken vs. ELITE-Schwellen</div>'
+        '<span>Full Sample | OOS | Monte Carlo</span></div>'
+    )
+
+    rows = []
+
+    # 1. Sharpe Ratios (Full vs OOS vs MC)
+    metrics = summary.get("metrics", {})
+    wf_results = summary.get("walk_forward", {})
+    mc_results = summary.get("mc_results", {})
+    
+    rows.append({
+        "Metrik": "Sharpe (Full Sample)",
+        "Ist": f"{metrics.get('sharpe_ratio', 0.0):.2f}",
+        "Schwelle": "≥ 1.8",
+        "Status": "✅ ELITE" if metrics.get("sharpe_ratio", 0.0) >= 1.8 else "⚠️ OK" if metrics.get("sharpe_ratio", 0.0) >= 1.2 else "❌ FAIL"
+    })
+    rows.append({
+        "Metrik": "Sharpe (OOS)",
+        "Ist": f"{wf_results.get('oos_sharpe', 0.0):.2f}",
+        "Schwelle": "≥ 1.0",
+        "Status": "✅ OK" if wf_results.get("oos_sharpe", 0.0) >= 1.0 else "❌ FAIL"
+    })
+
+    # 2. Drawdowns
+    rows.append({
+        "Metrik": "MaxDD (Full Sample)",
+        "Ist": f"{metrics.get('max_drawdown', 0.0)*100:.1f}%",
+        "Schwelle": "≤ 15%",
+        "Status": "✅ ELITE" if metrics.get('max_drawdown', 0.0) <= 0.15 else "⚠️ OK" if metrics.get('max_drawdown', 0.0) <= 0.25 else "❌ FAIL"
+    })
+    rows.append({
+        "Metrik": "MaxDD (OOS)",
+        "Ist": f"{wf_results.get('oos_max_dd', 0.0)*100:.1f}%",
+        "Schwelle": "≤ 20%",
+        "Status": "✅ OK" if wf_results.get('oos_max_dd', 0.0) <= 0.20 else "❌ FAIL"
+    })
+
+    # 3. Win Rate & Kelly
+    kelly_info = summary.get("kelly_oos", {})
+    rows.append({
+        "Metrik": "Win Rate (Full)",
+        "Ist": f"{metrics.get('win_rate', 0.0)*100:.1f}%",
+        "Schwelle": "≥ 45%",
+        "Status": "✅ OK" if metrics.get('win_rate', 0.0) >= 0.45 else "⚠️ WARN"
+    })
+    rows.append({
+        "Metrik": "Kelly OOS (Full)",
+        "Ist": f"{kelly_info.get('kelly_full', 0.0)*100:.1f}%",
+        "Schwelle": "≤ 2.0%",
+        "Status": "✅ OK" if kelly_info.get('kelly_full', 0.0) <= 0.02 else "⚠️ HOCH"
+    })
+
+    # 4. Monte Carlo Robustness
+    rows.append({
+        "Metrik": "MC Positive Prob",
+        "Ist": f"{mc_results.get('mc_positive_prob', 0.0)*100:.1f}%",
+        "Schwelle": "≥ 90%",
+        "Status": "✅ ELITE" if mc_results.get('mc_positive_prob', 0.0) >= 0.90 else "⚠️ OK" if mc_results.get('mc_positive_prob', 0.0) >= 0.75 else "❌ FAIL"
+    })
+    rows.append({
+        "Metrik": "MC P95 Return",
+        "Ist": f"{mc_results.get('mc_p95_return', 0.0)*100:.1f}%",
+        "Schwelle": "≥ 15%",
+        "Status": "✅ OK" if mc_results.get('mc_p95_return', 0.0) >= 0.15 else "⚠️ WARN"
+    })
+
+    radar_df = pd.DataFrame(rows)
+    html.append(df_to_table_html(radar_df))
+
+    html.append('</div>')  # card
+
+    # Card 2: Stochastische Modelle (Heston vs GBM vs Jump)
+    html.append('<div class="card">')
+    html.append(
+        '<div class="card-header"><div class="card-title">'
+        'Stochastische Robustheit</div><span>Heston | GBM | Jump-Diffusion</span></div>'
+    )
+
+    sim_results = summary.get("sim_results", {})
+    stoch_rows = []
+    if sim_results:
+        for model, data in sim_results.items():
+            status = "✅ OK"
+            if model == "heston" and data.get("median_return", 0.0) < 0:
+                status = "⚠️ VOL-RISIKO"
+            stoch_rows.append({
+                "Modell": model.upper(),
+                "Median Return": f"{data.get('median_return', 0.0)*100:.1f}%",
+                "P95 MaxDD": f"{data.get('p95_maxdd', 0.0)*100:.1f}%",
+                "Status": status
+            })
+    html.append(df_to_table_html(pd.DataFrame(stoch_rows)))
+    html.append('</div>')  # card
+
+    html.append('</div>')  # grid-2
+
+    # Grid 2: Regime-Analyse (VIX + HMM)
+    html.append('<div class="grid grid-2" style="margin-top:16px">')
+
+    # VIX Worst Regime
+    vix_alignment = summary.get("vix_alignment", {})
+    vix_profile = summary.get("risk_profiles", {}).get("vix")
+    html.append('<div class="card">')
+    html.append('<div class="card-header"><div class="card-title">VIX Regime</div><span>Schwächstes Regime</span></div>')
+    
+    if vix_profile:
+        html.append(f'''
+        <div class="card-body" style="padding:20px;text-align:center">
+            <div style="font-size:24px;font-weight:bold;color:#ff6b35">{vix_profile.get('worst_regime', 'N/A')}</div>
+            <div style="font-size:16px;color:var(--text-muted);">Weighted Sharpe: {vix_profile.get('weighted_sharpe', 0.0):.2f}</div>
+            <div style="margin-top:10px;padding:10px;background:#333;border-radius:6px;font-size:14px;">
+                {vix_profile.get("total_trades", 0)} Trades | 
+                {"✅ OK" if vix_profile.get('weighted_sharpe', 0.0) >= 1.5 else "⚠️ Regime-Filter nötig"}
+            </div>
+        </div>
+        ''')
+    else:
+        html.append('<div class="card-body"><p style="text-align:center;color:var(--text-muted);">Keine VIX-Daten</p></div>')
+    html.append('</div>')
+
+    # HMM Worst Regime
+    hmm_results = summary.get("hmm_results", {})
+    hmm_profile = summary.get("risk_profiles", {}).get("hmm")
+    html.append('<div class="card">')
+    html.append('<div class="card-header"><div class="card-title">HMM Regime</div><span>Schwächstes Regime</span></div>')
+    
+    if hmm_profile:
+        html.append(f'''
+        <div class="card-body" style="padding:20px;text-align:center">
+            <div style="font-size:24px;font-weight:bold;color:#ff6b35">Regime {hmm_profile.get('worst_regime', 'N/A')}</div>
+            <div style="font-size:16px;color:var(--text-muted);">Weighted Sharpe: {hmm_profile.get('weighted_sharpe', 0.0):.2f}</div>
+            <div style="margin-top:10px;padding:10px;background:#333;border-radius:6px;font-size:14px;">
+                {hmm_profile.get("total_trades", 0)} Trades | 
+                {"✅ OK" if hmm_profile.get('weighted_sharpe', 0.0) >= 1.2 else "⚠️ HMM-Filter empfohlen"}
+            </div>
+        </div>
+        ''')
+    else:
+        html.append('<div class="card-body"><p style="text-align:center;color:var(--text-muted);">Keine HMM-Daten</p></div>')
+    html.append('</div>')
+
+    html.append('</div>')  # grid-2 regimes
+
+    # FINALER STATUS: Gesamt-Score
+    html.append('<div class="full-width-card" style="margin-top:24px">')
+    html.append('<div class="card-header"><div class="card-title">FINALER LIVE-STATUS</div></div>')
+    
+    gate_result = summary.get("gate_result", {})
+    status = gate_result.get("status", "UNKNOWN")
+    confidence = gate_result.get("confidence", 0.0)
+    
+    status_class = "elite" if status == "ELITE" else "live-ok" if status == "LIVE_ELIGIBLE" else "wait" if status == "CONDITIONAL_PASS" else "fail"
+    html.append(f'''
+    <div class="card-body" style="text-align:center;padding:40px;">
+        <div style="font-size:32px;font-weight:bold;margin-bottom:12px;
+                    color:var(--{status_class}-color);">
+            {status.replace("_", " ").title()}
+        </div>
+        <div style="font-size:20px;color:var(--text-muted);margin-bottom:20px;">
+            Confidence: {confidence*100:.0f}%
+        </div>
+        <div style="font-size:16px;padding:16px;background:rgba(255,255,255,0.1);
+                    border-radius:8px;max-width:600px;margin:0 auto;">
+            {gate_result.get("reason", "No reason available")}
+        </div>
+        { "<div style='margin-top:20px;font-size:14px;color:#ff9800;'>⚠️ ACHTUNG: Mehrere Warnungen → Paper Trading empfohlen</div>" if "WARN" in str(rows) or confidence < 0.7 else "" }
+    </div>
+    ''')
+    html.append('</div>')
+
+    
 
     # ------------------------------------------------------------------
     # Footer

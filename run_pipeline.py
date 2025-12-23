@@ -512,7 +512,7 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml") -> None
         "mc_p95_return": mc_results["mc_p95_return"],
         "cvar5": tail_stats["cvar5"],
         "kelly_oos_full": kelly_oos_info["kelly_full"],
-        "mt5_correlation": 0.92,  # Platzhalter für reale Live-Korrelation
+        "mt5_correlation": 0.92,  # TODO: echte Live-Korrelation später ergänzen
     }
     if multi_asset_info is not None:
         gate_metrics["multi_asset_hit_rate"] = multi_asset_info["hit_rate"]
@@ -522,20 +522,125 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml") -> None
 
     result = gate.evaluate(gate_metrics)
 
+    # === SCHRITT 12: Risiko-Profile für Summary bauen ===
+    logger.info("[STEP 12] Building risk profile summary...")
 
-    logger.info("\n" + "=" * 60)
-    logger.info("GATE RESULT: %s", result.status.value)
-    logger.info("Confidence: %.1f%%", result.confidence * 100)
-    logger.info("Reason: %s", result.reason)
-    if result.violated_criteria:
-        logger.warning("Violated criteria:")
-        for criterion in result.violated_criteria:
-            logger.warning(" ❌ %s", criterion)
-    logger.info("=" * 60 + "\n")
+    # 1) Base Profile (Full Sample)
+    base_profile = {
+        "label": "Full Sample",
+        "scope": "IN_SAMPLE",
+        "total_return": metrics.get("total_return", 0.0),
+        "sharpe": metrics.get("sharpe_ratio", 0.0),
+        "max_dd": metrics.get("max_drawdown", 0.0),
+        "win_rate": metrics.get("win_rate", 0.0),
+        "trades": metrics.get("total_trades", len(trades_df)),
+    }
 
-    # === Summary-JSON ===
+    # 2) OOS Profile (Walk-Forward)
+    oos_profile = {
+        "label": "Walk-Forward OOS",
+        "scope": "OOS",
+        "total_return": wf_results.get("oos_total_return", np.nan),
+        "sharpe": wf_results.get("oos_sharpe", np.nan),
+        "max_dd": wf_results.get("oos_max_dd", np.nan),
+        "win_rate": wf_results.get("oos_win_rate", np.nan),
+        "trades": wf_results.get("oos_n_trades", np.nan),
+    }
+
+    # 3) Monte Carlo Profile
+    mc_profile = {
+        "label": "Monte Carlo",
+        "scope": "SIM_MC",
+        "median_return": mc_results.get("mc_median_return", 0.0),
+        "p5_return": mc_results.get("mc_p5_return", 0.0),
+        "p95_return": mc_results.get("mc_p95_return", 0.0),
+        "median_max_dd": mc_results.get("mc_median_max_dd", 0.0),
+        "p95_max_dd": mc_results.get("mc_p95_max_dd", 0.0),
+        "positive_prob": mc_results.get("mc_positive_prob", 0.0),
+    }
+
+    # 4) VIX Regime Profile (nur Aggregat)
+    vix_profile = None
+    if vix_alignment is not None and "regime_stats" in vix_alignment:
+        stats = vix_alignment["regime_stats"]
+        # Aggregiert: gewichtete Kennzahlen über Regime
+        total_trades_vix = sum(m.get("n_trades", 0) for m in stats.values())
+        if total_trades_vix > 0:
+            agg_sharpe = sum(
+                m.get("sharpe_ratio", 0.0) * m.get("n_trades", 0)
+                for m in stats.values()
+            ) / total_trades_vix
+            worst_regime = min(
+                stats.items(),
+                key=lambda kv: kv[1].get("sharpe_ratio", 0.0),
+            )[0]
+        else:
+            agg_sharpe = np.nan
+            worst_regime = None
+
+        vix_profile = {
+            "label": "VIX Regimes",
+            "scope": "REGIME_VIX",
+            "weighted_sharpe": agg_sharpe,
+            "total_trades": total_trades_vix,
+            "worst_regime": worst_regime,
+        }
+
+    # 5) HMM Regime Profile (nur Aggregat)
+    hmm_profile = None
+    if hmm_results is not None and "regime_stats" in hmm_results:
+        stats = hmm_results["regime_stats"]
+        total_trades_hmm = sum(m.get("n_trades", 0) for m in stats.values())
+        if total_trades_hmm > 0:
+            agg_sharpe = sum(
+                m.get("sharpe_ratio", 0.0) * m.get("n_trades", 0)
+                for m in stats.values()
+            ) / total_trades_hmm
+            worst_regime = min(
+                stats.items(),
+                key=lambda kv: kv[1].get("sharpe_ratio", 0.0),
+            )[0]
+        else:
+            agg_sharpe = np.nan
+            worst_regime = None
+
+        hmm_profile = {
+            "label": "HMM Regimes",
+            "scope": "REGIME_HMM",
+            "weighted_sharpe": agg_sharpe,
+            "total_trades": total_trades_hmm,
+            "worst_regime": worst_regime,
+        }
+
+    # 6) Kelly Profile (risk per trade)
+    kelly_profile = {
+        "label": "Kelly (Full / OOS)",
+        "scope": "KELLY",
+        "full": kelly_info.get("kelly_full", 0.0),
+        "half": kelly_info.get("kelly_half", 0.0),
+        "quarter": kelly_info.get("kelly_quarter", 0.0),
+        "oos_full": kelly_oos_info.get("kelly_full", 0.0),
+    }
+
+    # 7) Stochastic Models Profile (GBM/Heston/JumpDiff)
+    stoch_profile = None
+    if sim_results:
+        stoch_profile = {}
+        for model_name, m in sim_results.items():
+            stoch_profile[model_name] = {
+                "median_return": m.get("median_return", 0.0),
+                "p5_return": m.get("p5_return", 0.0),
+                "p95_return": m.get("p95_return", 0.0),
+                "median_max_dd": m.get("median_maxdd", 0.0),
+                "p95_max_dd": m.get("p95_maxdd", 0.0),
+            }
+
+    # === SCHRITT 13: Summary-JSON speichern ===
+    logger.info("[STEP 13] Saving summary.json...")
+
     summary = {
         "metrics": metrics,
+        "validation": validation,
         "cost_results": cost_results,
         "kelly": kelly_info,
         "kelly_oos": kelly_oos_info,
@@ -552,10 +657,22 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml") -> None
             "reason": result.reason,
             "violated_criteria": result.violated_criteria,
         },
+        "risk_profiles": {
+            "base": base_profile,
+            "oos": oos_profile,
+            "mc": mc_profile,
+            "vix": vix_profile,
+            "hmm": hmm_profile,
+            "kelly": kelly_profile,
+            "stoch_models": stoch_profile,
+        },
     }
-    summary_path = reports_dir / "summary.json"
-    with open(summary_path, "w", encoding="utf-8") as jf:
-        json.dump(summary, jf, default=str, indent=2)
+
+    summary_path = strategy_reports_dir / "summary.json"
+    with open(summary_path, "w", encoding="utf-8") as f:
+        json.dump(summary, f, indent=2, default=str)
+    logger.info("✅ Summary saved to %s", summary_path)
+
 
     # === ERWEITERTE PLOTS (Senior Level) ===
 
