@@ -148,8 +148,14 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml") -> None
 
     # === SCHRITT 6: Kelly-basiertes Sizing (Full Sample) ===
     logger.info("\n[STEP 6] Estimating Kelly sizing (full sample)...")
-    kelly_info = estimate_kelly_from_trades(trades_df)
-    logger.info("✅ Kelly estimation finished")
+    # max_fraction=0.02 → 2 % Hard Cap pro Trade
+    kelly_info = estimate_kelly_from_trades(trades_df, max_fraction=0.02)
+    logger.info(
+        "✅ Kelly (full): win_rate=%.2f%%, payoff=%.2f, kelly_full=%.2f%% (capped)",
+        kelly_info["win_rate"] * 100,
+        kelly_info["payoff_ratio"],
+        kelly_info["kelly_full"] * 100,
+    )
 
     # === SCHRITT 7: VIX-Regime-Ausrichtung ===
     logger.info("\n[STEP 7] Loading VIX regimes and checking alignment...")
@@ -170,14 +176,26 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml") -> None
     # STEP 7b: HMM-Regime-Analyse
     # ------------------------------------------------------------------
     logger.info("STEP 7b Running HMM-based regime analysis...")
-    hmmcfg = config.get('hmm_regime', {'n_regimes': 3, 'min_trades_per_regime': 20})
-    hmm_results = analyze_hmm_regimes(
-        trades_df, 
+    hmm_cfg = config.get("hmm_regime", {"n_regimes": 3, "min_trades_per_regime": 20})
+    hmm_results_obj = analyze_hmm_regimes(
+        trades_df,
         None,  # Optional: Preise laden falls verfügbar
-        hmmcfg, 
-        initial_capital
+        hmm_cfg,
+        initial_capital,
     )
-    logger.info(f"HMM regimes found: {len(hmm_results.regime_stats) if hmm_results else 0}")
+    logger.info(
+        "HMM regimes found: %d",
+        len(hmm_results_obj.regime_stats) if hmm_results_obj else 0,
+    )
+
+    # Für Summary-JSON ein serialisierbares Dict bauen
+    if hmm_results_obj is not None:
+        hmm_results = {
+            "regime_stats": hmm_results_obj.regime_stats,
+            "state_series": hmm_results_obj.state_series.to_dict(),
+        }
+    else:
+        hmm_results = None
 
     # === SCHRITT 8: Walk-Forward / OOS-Analyse ===
     logger.info("\n[STEP 8] Running walk-forward analysis on trades...")
@@ -200,16 +218,16 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml") -> None
 
     # === Kelly aus OOS-Trades (Variante A) ===
     logger.info("[STEP 8b] Estimating Kelly from OOS (walk-forward test windows)...")
-    oos_indices = []
+    oos_indices: list[int] = []
     for w in wf_results["window_metrics"]:
         oos_indices.extend(w.get("test_indices", []))
     oos_indices = sorted(set(oos_indices))
 
     if oos_indices:
         trades_df_oos = trades_df.loc[oos_indices].copy()
-        kelly_oos_info = estimate_kelly_from_trades(trades_df_oos)
+        kelly_oos_info = estimate_kelly_from_trades(trades_df_oos, max_fraction=0.02)
         logger.info(
-            "✅ OOS Kelly: win_rate=%.2f%%, payoff=%.2f, kelly_full=%.2f%%",
+            "✅ OOS Kelly (capped): win_rate=%.2f%%, payoff=%.2f, kelly_full=%.2f%%",
             kelly_oos_info["win_rate"] * 100,
             kelly_oos_info["payoff_ratio"],
             kelly_oos_info["kelly_full"] * 100,
@@ -245,18 +263,33 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml") -> None
     # ------------------------------------------------------------------
     # STEP 9b: Stochastische Szenarien (GBM/Heston/Jump-Diffusion)
     # ------------------------------------------------------------------
-    logger.info("STEP 9b Running stochastic model scenarios...")
-    simconfig = config.get('simulation', {
-        'models': ['gbm', 'heston', 'jump_diffusion'],
-        'nsims': 1000,
-        'nsteps': 252
-    })
-    sim_results = simulate_paths_from_trades(
-        trades_df=trades_df, 
-        config=simconfig, 
-        initial_capital=initial_capital
+    logger.info("STEP 9b Running stochastic model scenarios (GBM/Heston/Jump-Diffusion)...")
+    sim_config = config.get(
+        "simulation",
+        {
+            "T_years": 1.0,
+            "num_steps": 252,
+            "num_paths": 5000,
+            "models": ["gbm", "heston", "jumpdiffusion"],
+            "random_state": 12345,
+        },
     )
-    logger.info(f"Stochastic scenarios: {list(sim_results.keys())}")
+    sim_results = simulate_paths_from_trades(
+        trades_df=trades_df,
+        config=sim_config,
+        initial_capital=initial_capital,
+    )
+    logger.info("Stochastic scenarios: %s", list(sim_results.keys()))
+
+    # Zusätzlich: Hinweis-Log, falls Heston wesentlich pessimistischer ist
+    if "heston" in sim_results and "gbm" in sim_results:
+        if sim_results["heston"]["median_return"] < 0 < sim_results["gbm"]["median_return"]:
+            logger.warning(
+                "Heston median_return (%.2f) < 0, während GBM median_return (%.2f) > 0 – "
+                "Strategie profitiert evtl. nur in ruhigen Phasen.",
+                sim_results["heston"]["median_return"],
+                sim_results["gbm"]["median_return"],
+            )
 
     # === PLOTS (alle in strategy_reports_dir) ===
 
@@ -293,6 +326,46 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml") -> None
     logger.info("TAIL RISK CVaR5=%.2f%% mc_p95_max_dd=%.2f%%", 
                 tail_stats["cvar5"] * 100, 
                 mc_results["mc_p95_max_dd"] * 100)
+    
+
+    # Stochastic-Scenario-Vergleichsplots (GBM vs. Heston vs. Jump-Diffusion)
+    logger.info("[PLOT] Saving stochastic scenario comparison (total returns & maxDD)...")
+    stoch_plot = reports_dir / "stochastic_scenarios.png"
+
+    models = list(sim_results.keys())
+    med_returns = [sim_results[m]["median_return"] for m in models]
+    p5_returns = [sim_results[m]["p5_return"] for m in models]
+    p95_returns = [sim_results[m]["p95_return"] for m in models]
+    med_dds = [sim_results[m]["median_maxdd"] for m in models]
+    p95_dds = [sim_results[m]["p95_maxdd"] for m in models]
+
+    fig, axes = plt.subplots(1, 2, figsize=(12, 4))
+
+    # Links: Returns
+    x = np.arange(len(models))
+    w = 0.25
+    axes[0].bar(x - w, med_returns, width=w, label="Median")
+    axes[0].bar(x, p5_returns, width=w, label="P5")
+    axes[0].bar(x + w, p95_returns, width=w, label="P95")
+    axes[0].set_xticks(x)
+    axes[0].set_xticklabels(models)
+    axes[0].set_title("Stochastic Models – Total Returns")
+    axes[0].set_ylabel("Return (fraction)")
+    axes[0].legend()
+
+    # Rechts: MaxDD
+    axes[1].bar(x - w, med_dds, width=w, label="Median MaxDD")
+    axes[1].bar(x + w, p95_dds, width=w, label="P95 MaxDD")
+    axes[1].set_xticks(x)
+    axes[1].set_xticklabels(models)
+    axes[1].set_title("Stochastic Models – Max Drawdown")
+    axes[1].set_ylabel("Drawdown (fraction)")
+    axes[1].legend()
+
+    plt.tight_layout()
+    plt.savefig(stoch_plot, dpi=180)
+    plt.close()
+    logger.info("✅ Stochastic scenario comparison saved to %s", stoch_plot)
 
 
     # Equity Curve
@@ -309,34 +382,42 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml") -> None
     logger.info("Equity curve saved to %s", eq_path)
 
     # NEU: HMM‑Regime‑Overlay, falls Ergebnisse vorhanden
-    if hmm_results is not None and not hmm_results.state_series.empty:
+    if hmm_results is not None and "state_series" in hmm_results:
         logger.info("[PLOT] Saving HMM regime overlay...")
         hmm_plot_path = reports_dir / "hmm_regime_overlay.png"
 
-        # state_series hat Index der Returns (also ab zweitem Trade).
-        # Auf Trade-Index abbilden:
-        states = hmm_results.state_series.copy()
-        states.index = trades_df.index[-len(states):]  # hinten ausrichten
+        # state_series liegt als Dict {index: state} vor → Series bauen
+        states = pd.Series(hmm_results["state_series"])
+        if not states.empty:
+            # Index auf Trade-Index mappen (hinten ausrichten)
+            states.index = trades_df.index[-len(states):]
 
-        eq = trades_df["pnl"].cumsum() + initial_capital
+            eq = trades_df["pnl"].cumsum() + initial_capital
+            plt.figure(figsize=(10, 4))
+            plt.plot(eq.index, eq.values, color="white", linewidth=1.5, label="Equity")
 
-        plt.figure(figsize=(10, 4))
-        plt.plot(eq.index, eq.values, color="white", linewidth=1.5, label="Equity")
+            unique_states = sorted(states.dropna().unique())
+            colors = plt.cm.tab10(range(len(unique_states)))
+            for s, c in zip(unique_states, colors):
+                mask = states == s
+                plt.scatter(
+                    states.index[mask],
+                    eq.loc[states.index[mask]],
+                    s=8,
+                    color=c,
+                    label=f"Regime {s}",
+                    alpha=0.7,
+                )
 
-        unique_states = sorted(states.dropna().unique())
-        colors = plt.cm.tab10(range(len(unique_states)))
-
-        for s, c in zip(unique_states, colors):
-            mask = states == s
-            plt.scatter(states.index[mask], eq.loc[states.index[mask]], s=8, color=c, label=f"Regime {s}", alpha=0.7)
-
-        plt.title("Equity Curve with HMM Regimes")
-        plt.ylabel("Equity")
-        plt.legend(loc="upper left", fontsize=8)
-        plt.tight_layout()
-        plt.savefig(hmm_plot_path, dpi=150)
-        plt.close()
-        logger.info("✅ HMM overlay saved to %s", hmm_plot_path)
+            plt.title("Equity Curve with HMM Regimes")
+            plt.ylabel("Equity")
+            plt.legend(loc="upper left", fontsize=8)
+            plt.tight_layout()
+            plt.savefig(hmm_plot_path, dpi=150)
+            plt.close()
+            logger.info("✅ HMM overlay saved to %s", hmm_plot_path)
+    else:
+        logger.info("No HMM results available for overlay plot.")
 
     # VIX Regime Sharpe
     logger.info("PLOT Saving VIX regime Sharpe barplot...")
@@ -419,10 +500,10 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml") -> None
         plt.close()
         logger.info("✅ Multi-Asset Sharpe plot saved to %s", ma_plot_path)
 
-    # === SCHRITT 11: ELITE Decision Gate ===
-    logger.info("\n[STEP 11] Running ELITE Decision Gate...")
-    gate = DecisionGate(config_path)
 
+    # === SCHRITT 11: ELITE Decision Gate ===
+    logger.info("\n[STEP 11] Running Decision Gate...")
+    gate = DecisionGate(config_path)
     gate_metrics = {
         "oos_sharpe": wf_results["oos_sharpe"],
         "oos_profit_factor": wf_results["oos_profit_factor"],
@@ -431,12 +512,10 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml") -> None
         "mc_p95_return": mc_results["mc_p95_return"],
         "cvar5": tail_stats["cvar5"],
         "kelly_oos_full": kelly_oos_info["kelly_full"],
-        "mt5_correlation": 0.92,  # Deine MT5 Korrelation
+        "mt5_correlation": 0.92,  # Platzhalter für reale Live-Korrelation
     }
-
     if multi_asset_info is not None:
         gate_metrics["multi_asset_hit_rate"] = multi_asset_info["hit_rate"]
-
     if regime_decision is not None:
         gate_metrics["regime_allowed"] = regime_decision["allowed"]
         gate_metrics["regime_risk_multiplier"] = regime_decision["risk_multiplier"]
@@ -592,7 +671,7 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml") -> None
 
     ax.legend(fontsize=11, framealpha=0.95, loc='upper left')
     ax.grid(True, alpha=0.3)
-    ax.set_xlim(0, max(10, kelly_info['kelly_full']*100*1.2))
+    ax.set_xlim(0, max(4, kelly_info['kelly_full']*100*1.2))
 
     plt.tight_layout()
     plt.savefig(kelly_plot, dpi=300, bbox_inches='tight', facecolor='white')
@@ -781,6 +860,17 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml") -> None
         f.write("STOCHASTIC MODEL SCENARIOS\n")
         if not sim_df.empty:
             f.write(sim_df.to_markdown(index=False) + "\n\n")
+            if (
+                "heston" in sim_results
+                and "gbm" in sim_results
+                and sim_results["heston"]["median_return"] < 0
+                and sim_results["gbm"]["median_return"] > 0
+            ):
+                f.write(
+                    "NOTE: Under Heston (stochastic volatility) the median return is negative, "
+                    "while GBM/Jump-Diffusion are positive. Strategy may rely on low-vol "
+                    "regimes – treat as additional risk when volatility spikes.\n\n"
+                )
         else:
             f.write("no stochastic scenarios\n\n")
 
