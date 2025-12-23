@@ -26,6 +26,7 @@ PLOT_FILES: Dict[str, str] = {
     "vix_regime_timeseries": "vix_regime_timeseries.png",
     "hmm_regime_overlay": "hmm_regime_overlay.png",
     "multi_asset_sharpe": "multiassetsharpe.png",
+    "stochastic_scenarios": "stochastic_scenarios.png",
 }
 
 
@@ -59,24 +60,29 @@ def df_to_table_html(df: Optional[pd.DataFrame]) -> str:
         return (
             '<div class="card-body">'
             '<p style="text-align:left;color:var(--text-muted);padding:20px">'
-            "Keine Daten verfügbar."
-            "</p></div>"
+            'Keine Daten verfügbar.'
+            '</p></div>'
         )
 
-    html = ['<div class="card-body"><div class="table-responsive"><table class="table table-sm table-striped table-dark">']
-    # Header
+    html: List[str] = []
+    html.append('<div class="card-body"><div class="table-responsive">')
+    html.append('<table class="table table-sm table-striped table-dark">')
     html.append("<thead><tr>")
     for col in df.columns:
-        html.append(f"<th style='text-align:left'>{col}</th>")
+        html.append(f'<th style="text-align:left">{col}</th>')
     html.append("</tr></thead><tbody>")
 
-    # Rows
     for _, row in df.iterrows():
         html.append("<tr>")
         for val in row:
             if pd.isna(val):
                 html.append("<td>-</td>")
-            elif isinstance(val, (int, float)):
+            elif isinstance(val, (int,)) or (
+                isinstance(val, float) and float(val).is_integer()
+            ):
+                # Ganze Zahlen wie Trades ohne Nachkommastellen
+                html.append(f"<td>{int(val)}</td>")
+            elif isinstance(val, float):
                 html.append(f"<td>{val:.3f}</td>")
             else:
                 html.append(f"<td>{val}</td>")
@@ -141,11 +147,12 @@ def render_vix_table(vix_alignment: Dict[str, Any]) -> str:
 
 
 def render_hmm_table(hmm_results: Any) -> str:
+    """HMM-Regime-Tabelle inkl. kurzer Interpretation."""
     try:
-        if hasattr(hmm_results, "regime_stats"):
-            stats_dict = hmm_results.regime_stats
-        elif isinstance(hmm_results, dict) and "regime_stats" in hmm_results:
+        if isinstance(hmm_results, dict) and "regime_stats" in hmm_results:
             stats_dict = hmm_results["regime_stats"]
+        elif hasattr(hmm_results, "regime_stats"):
+            stats_dict = hmm_results.regime_stats
         else:
             stats_dict = {}
     except Exception:
@@ -166,7 +173,23 @@ def render_hmm_table(hmm_results: Any) -> str:
                 "PF": stats.get("profit_factor", 0.0),
             }
         )
-    return df_to_table_html(pd.DataFrame(rows))
+    table_html = df_to_table_html(pd.DataFrame(rows))
+
+    explanation = (
+        '<div class="explanation">'
+        "<h4>Wie lesen?</h4>"
+        "<p>Jedes HMM-Regime fasst ähnliche Marktphasen zusammen, "
+        "basierend auf der Equity-Kurve dieser Strategie – nicht auf einem Index. "
+        "<strong>Regime</strong> ist nur ein Label (0,1,2…), "
+        "<strong>Trades</strong> zeigt, wie viele Trades in diesem Zustand liegen.</p>"
+        "<p><strong>TotalReturn</strong> und <strong>Sharpe</strong> zeigen, "
+        "in welchen Zuständen die Strategie Geld verdient und wie effizient. "
+        "<strong>MaxDD</strong> und <strong>PF</strong> zeigen, wie schmerzhaft "
+        "Drawdowns in diesem Zustand sind. Typischer Use‑Case: "
+        "Regime mit schlechter Sharpe und hoher MaxDD als Warnsignal/Filter nutzen.</p>"
+        "</div>"
+    )
+    return table_html + explanation
 
 
 # -------------------------------------------------------------------
@@ -184,6 +207,7 @@ def generate_html_report(summary_path: Path, output_dir: Path, strategy_name: st
     gate_result = summary.get("gate_result", summary.get("gateresult", {}))
     vix_alignment = summary.get("vix_alignment", summary.get("vixalignment", {}))
     hmm_results = summary.get("hmm_results", {})
+    tail_stats = summary.get("tail_stats", {}) 
     mc_results = summary.get("mc_results", summary.get("mcresults", {}))
     wf_results = summary.get("walkforward", summary.get("walk_forward", {}))
     kelly_info = summary.get("kelly_oos", summary.get("kellyoos", {}))
@@ -206,6 +230,10 @@ def generate_html_report(summary_path: Path, output_dir: Path, strategy_name: st
     tail_risk = safe_get(summary, ["tail_stats", "cvar_5"], default=0.0) or safe_get(
         summary, ["tailstats", "cvar5"], default=0.0
     )
+    cvar5 = safe_get(summary, ("tail_stats", "cvar5"), default=None)
+    if cvar5 is None:
+        cvar5 = mc_results.get("cvar5", 0.0)
+
     multi_asset_hitrate = multi_asset.get("hitrate", 0.0) * 100.0
 
     status = gate_result.get("status", "warning")
@@ -442,7 +470,7 @@ def generate_html_report(summary_path: Path, output_dir: Path, strategy_name: st
         '<div class="card-head">'
         '<div class="card-header"><div class="card-title">Tail-Risk CVaR</div></div>'
         '<div class="card-body">'
-        f'<div class="metric-value">{tail_risk*100:.1f}%</div>'
+        f'<div class="metric-value">{cvar5*100:.1f}%</div>'
         '<div class="metric-label">Verlust der schlechtesten 5%</div>'
         '<div class="metric-sub">Realistischer Extremverlust statt theoretischem MaxDD.</div>'
         "</div></div>"
@@ -616,6 +644,8 @@ def generate_html_report(summary_path: Path, output_dir: Path, strategy_name: st
     # Stochastische Szenarien - GBM / Heston / Jump-Diffusion
     html.append('<h2 class="section-title">Stochastische Szenarien</h2>')
     html.append('<div class="grid grid-2">')
+
+    # Card 1: Modell-Kennzahlen (Tabelle)
     html.append('<div class="card">')
     html.append(
         '<div class="card-header">'
@@ -647,12 +677,50 @@ def generate_html_report(summary_path: Path, output_dir: Path, strategy_name: st
         )
 
     html.append(
-        '<div class="explanation"><h4>Einfach erklärt</h4>'
-        '<p>Hier wird die Equity in unterschiedliche stochastische Modelle eingebettet. '
-        'Die Kennzahlen zeigen, wie robust die Strategie unter GBM-, Heston- und '
-        'Jump-Diffusion-Annahmen wäre.</p></div>'
+        '<div class="explanation"><h4>So liest du die Tabelle</h4>'
+        '<p><strong>MedianReturn</strong>, <strong>P5</strong> und '
+        '<strong>P95</strong> zeigen, wie sich die Gesamtrendite deiner '
+        'Strategie verhält, wenn man sie in das jeweilige Modell einbettet. '
+        'Liegt z.&nbsp;B. der Heston-Median deutlich tiefer als der GBM-Median, '
+        'reagiert die Strategie empfindlich auf Volatilitätsspitzen.</p>'
+        '<p><strong>MedianMaxDD</strong> und <strong>P95MaxDD</strong> zeigen, '
+        'wie tief und wie häufig Drawdowns in den Modellen werden. '
+        'Sind die Heston-Drawdowns deutlich höher als bei GBM/Jump-Diffusion, '
+        'musst du in turbulenten Märkten mit deutlich größeren Einbrüchen rechnen.</p>'
+        '</div>'
     )
-    html.append('</div></div>')
+    html.append('</div>')  # Ende Card 1
+
+    # Card 2: Plot-Übersicht der stochastischen Szenarien
+    html.append('<div class="card">')
+    html.append(
+        '<div class="card-header">'
+        '<div class="card-title">Stochastische Modelle – Übersicht</div>'
+        '<span>GBM, Heston, Jump-Diffusion im Vergleich</span>'
+        '</div>'
+    )
+    html.append('<div class="card-body">')
+    html.append(plot_exists(output_dir, "stochastic_scenarios"))
+    html.append(
+        '<p class="plot-caption">'
+        'Der Plot fasst Median, „Best Case“ (P95) und „Worst Case“ (P5) '
+        'für Rendite und MaxDD der drei Modellwelten zusammen. '
+        'So siehst du auf einen Blick, ob ein Modell (z.&nbsp;B. Heston) '
+        'deutlich pessimistischer ist als die anderen.</p>'
+        '<div class="explanation">'
+        '<h4>So interpretierst du den Plot</h4>'
+        '<p>Wenn die Balken für Heston klar schlechter sind als für GBM oder '
+        'Jump-Diffusion, bedeutet das: Deine Strategie funktioniert vor allem '
+        'in „ruhigeren“ Märkten und leidet bei starken Volatilitätssprüngen. '
+        'Sind alle drei Modelle ähnlich, ist die Strategie gegenüber '
+        'verschiedenen Marktannahmen robuster.</p>'
+        '</div>'
+    )
+    html.append('</div>')  # Ende Card-Body 2
+    html.append('</div>')  # Ende Card 2
+
+    html.append('</div>')  # Ende grid-2
+
 
     # ------------------------------------------------------------------
     # Walk-Forward
@@ -730,22 +798,22 @@ def generate_html_report(summary_path: Path, output_dir: Path, strategy_name: st
         '<div class="card-header">'
         '<div class="card-title">VIX Regime Performance</div>'
         '<span>Volatilitäts-Phasen</span>'
-        "</div>"
+        '</div>'
     )
     html.append('<div class="card-body">')
     html.append(plot_exists(output_dir, "vix_regime_sharpe"))
     html.append(
         '<p class="plot-caption">'
-        "Balkendiagramm der Sharpe Ratio je VIX-Regime (z. B. Low Volatility, Range, High Volatility)."
-        "</p>"
-    )
-    html.append(
+        'Balkendiagramm der Sharpe Ratio je VIX-Regime (z. B. Low Volatility, Range, High Volatility).'
+        '</p>'
         '<div class="explanation"><h4>Einfach erklärt</h4>'
-        "<p>Der VIX ist ein Volatilitätsindex („Angstbarometer“). Die Regime-Einteilung zeigt, in welchen "
-        "Marktphasen (ruhig, normal, hektisch) die Strategie besonders gut oder schlecht läuft. "
-        "Ein starkes Ungleichgewicht kann für eine Regime-Filterung genutzt werden.</p>"
-        "</div></div></div>"
+        '<p>Der VIX ist ein Volatilitätsindex („Angstbarometer“). Die Regime-Einteilung zeigt, '
+        'in welchen Marktphasen (ruhig, normal, hektisch) die Strategie besonders gut oder '
+        'schlecht läuft. Ein starkes Ungleichgewicht kann für eine Regime-Filterung genutzt werden.</p>'
+        '</div>'
     )
+    html.append('</div>')  # card-body
+    html.append('</div>')  # card
 
     # VIX Regime Tabelle
     html.append('<div class="card">')
@@ -753,83 +821,101 @@ def generate_html_report(summary_path: Path, output_dir: Path, strategy_name: st
         '<div class="card-header">'
         '<div class="card-title">VIX Regime Tabelle</div>'
         '<span>Performance je Phase</span>'
-        "</div>"
+        '</div>'
     )
     html.append(render_vix_table(vix_alignment))
     html.append(
-        '<div class="explanation"><h4>Interpretation</h4>'
-        "<p>Spalten: <strong>Trades</strong> = Anzahl Trades pro Phase, "
-        "<strong>TotalReturn</strong> = Gesamtrendite, <strong>Sharpe</strong> = Rendite pro Risiko, "
-        "<strong>MaxDD</strong> = schlimmster Einbruch, <strong>PF</strong> = Verhältnis "
-        "Summe Gewinne zu Summe Verluste.</p>"
-        "</div></div>"
+        '<div class="explanation">'
+        '<h4>Wie nutzen?</h4>'
+        '<p>Die VIX-Regime basieren auf einem Marktindex (Volatilität des S&P 500), '
+        'während die HMM-Regime direkt aus deiner Strategie-Eigenperformance kommen. '
+        'Idee: Wenn ein HMM-Problem-Regime zeitlich hauptsächlich in '
+        '„High_Volatility“ oder „Range“ fällt, kannst du diese Phasen mit einem '
+        'einfachen VIX-Filter vorab ausblenden.</p>'
+        '<p>Praktisch bedeutet das: '
+        'Suche in der VIX-Tabelle nach Regimen mit vielen Trades, aber schwacher Sharpe '
+        'oder hoher MaxDD. Diese Phasen sind Kandidaten, in denen du die Strategie '
+        'abschalten oder den Einsatz reduzieren solltest.</p>'
+        '</div>'
     )
+    html.append('</div>')  # card
 
-    html.append("</div>")  # grid-2
+    html.append('</div>')  # grid-2
 
     # VIX-Zeitreihe & HMM Overlay
     html.append('<div class="grid grid-2" style="margin-top:16px">')
 
+    # VIX Regime Verlauf
     html.append('<div class="card">')
     html.append(
         '<div class="card-header">'
         '<div class="card-title">VIX Regime Verlauf</div>'
         '<span>Regime-Zeitreihe</span>'
-        "</div>"
+        '</div>'
     )
     html.append('<div class="card-body">')
     html.append(plot_exists(output_dir, "vix_regime_timeseries"))
     html.append(
         '<p class="plot-caption">'
-        "Zeitlicher Verlauf der erkannten VIX-Regime (Stufenplot). "
-        "Horizontale Abschnitte markieren stabile Volatilitätsphasen."
-        "</p>"
+        'Zeitlicher Verlauf der erkannten VIX-Regime (Stufenplot). '
+        'Horizontale Abschnitte markieren stabile Volatilitätsphasen.'
+        '</p>'
+        '<div class="explanation">'
+        '<h4>So liest du den Verlauf</h4>'
+        '<p>Jeder waagerechte Abschnitt steht für ein VIX-Regime '
+        '(z.B. Low_Volatility, Range, High_Volatility). '
+        'Lege diesen Plot gedanklich über deine Equity-Kurve: '
+        'Laufen Drawdowns überwiegend in High_Volatility-Abschnitten, '
+        'ist die Strategie dort anfällig. Verdient sie Geld vor allem in '
+        'Low_Volatility, ist sie ein „Ruhige-Phasen“-System.</p>'
+        '</div>'
     )
-    html.append(
-        '<div class="explanation"><h4>Interpretation</h4>'
-        "<p>Jede Stufe steht für ein Volatilitäts-Regime (z. B. ruhig, normal, hektisch). "
-        "So erkennst du, in welchen Phasen deine Trades überwiegend stattfinden und ob Problemphasen "
-        "mit bestimmten Regimen zusammenfallen.</p>"
-        "</div></div></div>"
-    )
+    html.append('</div>')  # card-body
+    html.append('</div>')  # card
 
+    # HMM Regime Overlay
     html.append('<div class="card">')
     html.append(
         '<div class="card-header">'
         '<div class="card-title">HMM Regime Overlay</div>'
         '<span>Equity nach Marktzustand</span>'
-        "</div>"
+        '</div>'
     )
     html.append('<div class="card-body">')
     html.append(plot_exists(output_dir, "hmm_regime_overlay"))
     html.append(
         '<p class="plot-caption">'
-        "Equity-Kurve, eingefärbt nach HMM-Regime. Cluster mit gleicher Farbe haben ähnliche Performance-Eigenschaften."
-        "</p>"
+        'Equity-Kurve, eingefärbt nach HMM-Regime. Cluster mit gleicher Farbe haben ähnliche Performance-Eigenschaften.'
+        '</p>'
+        '<div class="explanation">'
+        '<h4>So interpretierst du die Farben</h4>'
+        '<p>Die Linie zeigt deine Equity-Kurve; die Punkte in verschiedenen Farben '
+        'markieren HMM-Regime. Jede Farbe steht für ein Muster im Equity-Verlauf, '
+        'z.B. Trendphasen, Seitwärtsphasen mit kleinen Gewinnen oder längere '
+        'Verlustcluster.</p>'
+        '<p>Interessant sind Abschnitte, in denen ein Farbbereich klar schlechter '
+        'aussieht (lange Dellen, viele rote Trades). '
+        'Diesen Regime-State kannst du in der HMM-Tabelle wiederfinden und dort '
+        'an Sharpe/MaxDD erkennen. So lassen sich problematische Phasen systematisch '
+        'identifizieren und ggf. als Filter ausschalten.</p>'
+        '</div>'
     )
-    html.append(
-        '<div class="explanation"><h4>Einfach erklärt</h4>'
-        "<p>Ein Hidden Markov Model (HMM) erkennt unsichtbare Marktregime anhand des Equity-Verlaufs. "
-        "Jeder Regime-State fasst Phasen mit ähnlicher Dynamik zusammen. "
-        "Regime mit hoher Sharpe und niedriger MaxDD sind wünschenswert; "
-        "Regime mit schlechter Kennzahl-Kombination eignen sich als Warnsignal oder Filter.</p>"
-        "</div></div></div>"
-    )
+    html.append('</div>')  # card-body
+    html.append('</div>')  # card
 
-    html.append("</div>")  # grid-2
+    html.append('</div>')  # grid-2
 
     # HMM Tabelle
     html.append('<div class="grid grid-2" style="margin-top:16px">')
     html.append('<div class="card">')
     html.append(
-        '<div class="card-header">'
-        '<div class="card-title">HMM Regime Tabelle</div>'
-        '<span>Verborgene Marktzustände</span>'
-        "</div>"
+        '<div class="card-header"><div class="card-title">'
+        'HMM Regime Tabelle</div><span>Verborgene Marktzustände</span></div>'
     )
     html.append(render_hmm_table(hmm_results))
-    html.append("</div>")
-    html.append("</div>")  # grid-2
+    html.append('</div>')
+    html.append('</div>')  # grid-2
+
 
     # ------------------------------------------------------------------
     # Decision Gate & Multi-Asset

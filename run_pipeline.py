@@ -545,6 +545,7 @@ def run_pipeline(trades_csv_path: str, config_path: str = "config.yaml") -> None
         "multi_asset": multi_asset_info,
         "sim_results": sim_results,
         "hmm_results": hmm_results,
+        "tail_stats": tail_stats,
         "gate_result": {
             "status": result.status.value,
             "confidence": result.confidence,
