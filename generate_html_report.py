@@ -207,7 +207,6 @@ def generate_html_report(summary_path: Path, output_dir: Path, strategy_name: st
     gate_result = summary.get("gate_result", summary.get("gateresult", {}))
     vix_alignment = summary.get("vix_alignment", summary.get("vixalignment", {}))
     hmm_results = summary.get("hmm_results", {})
-    tail_stats = summary.get("tail_stats", {}) 
     mc_results = summary.get("mc_results", summary.get("mcresults", {}))
     wf_results = summary.get("walkforward", summary.get("walk_forward", {}))
     kelly_info = summary.get("kelly_oos", summary.get("kellyoos", {}))
@@ -218,7 +217,7 @@ def generate_html_report(summary_path: Path, output_dir: Path, strategy_name: st
     total_return = metrics.get("total_return", 0.0)
     sharpe = metrics.get("sharpe_ratio", 0.0)
     max_dd = metrics.get("max_drawdown", 0.0)
-    winrate = metrics.get("winrate", 0.0)
+    winrate = metrics.get("win_rate", 0.0)
     total_trades = metrics.get("total_trades", 0)
     date_range = metrics.get("date_range", ["NA", "NA"])
     date_range_str = f"{date_range[0]} – {date_range[1]}" if date_range[0] != "NA" else "NA"
