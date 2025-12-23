@@ -58,7 +58,7 @@ def df_to_table_html(df: Optional[pd.DataFrame]) -> str:
     if df is None or df.empty:
         return (
             '<div class="card-body">'
-            '<p style="text-align:center;color:var(--text-muted);padding:20px">'
+            '<p style="text-align:left;color:var(--text-muted);padding:20px">'
             "Keine Daten verfügbar."
             "</p></div>"
         )
@@ -67,7 +67,7 @@ def df_to_table_html(df: Optional[pd.DataFrame]) -> str:
     # Header
     html.append("<thead><tr>")
     for col in df.columns:
-        html.append(f"<th style='text-align:center'>{col}</th>")
+        html.append(f"<th style='text-align:left'>{col}</th>")
     html.append("</tr></thead><tbody>")
 
     # Rows
@@ -111,7 +111,7 @@ def plot_exists(output_dir: Path, plot_name: str) -> str:
     if plot_path.exists():
         return f'<img src="{plot_path.name}" class="plot" alt="{plot_name}">'
     return (
-        '<div style="height:400px;display:flex;align-items:center;justify-content:center;'
+        '<div style="height:400px;display:flex;align-items:left;justify-content:left;'
         'background:#020617;border:1px solid #1f2937;border-radius:10px;'
         'color:var(--text-muted);font-size:13px">'
         f"{plot_name}-Plot nicht gefunden."
@@ -238,14 +238,14 @@ def generate_html_report(summary_path: Path, output_dir: Path, strategy_name: st
     a { color: var(--accent); text-decoration: none; }
     .container { max-width: 1400px; margin: 0 auto 64px auto; }
     .header {
-        display: flex; justify-content: space-between; align-items: center;
+        display: flex; justify-content: space-between; align-items: left;
         margin-bottom: 24px; gap: 16px;
     }
     .header-title { display: flex; flex-direction: column; gap: 4px; }
     .header-title h1 { font-size: 26px; letter-spacing: 0.04em; }
     .header-title p { font-size: 13px; color: var(--text-muted); }
     .badge {
-        display: inline-flex; align-items: center; gap: 6px;
+        display: inline-flex; align-items: left; gap: 6px;
         padding: 6px 10px; border-radius: 999px; font-size: 12px;
         background: var(--accent-soft); color: var(--accent);
     }
@@ -288,7 +288,7 @@ def generate_html_report(summary_path: Path, output_dir: Path, strategy_name: st
         border-bottom: 1px solid #1f2937;
         font-size: 14px; font-weight: 600;
         margin-bottom: 10px;
-        display: flex; justify-content: space-between; align-items: center;
+        display: flex; justify-content: space-between; align-items: left;
         color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em;
     }
     .card-title { font-size: 15px; font-weight: 600; color: #e5e7eb; text-transform:none; letter-spacing:0; }
@@ -640,7 +640,7 @@ def generate_html_report(summary_path: Path, output_dir: Path, strategy_name: st
         html.append(df_to_table_html(pd.DataFrame(rows)))
     else:
         html.append(
-            '<div class="card-body"><p style="text-align:center;'
+            '<div class="card-body"><p style="text-align:left;'
             'color:var(--text-muted);padding:20px">'
             'Keine stochastischen Szenarien vorhanden.'
             '</p></div>'
@@ -710,7 +710,7 @@ def generate_html_report(summary_path: Path, output_dir: Path, strategy_name: st
         html.append(df_to_table_html(pd.DataFrame(rows)))
     else:
         html.append(
-            '<div class="card-body"><p style="text-align:center;'
+            '<div class="card-body"><p style="text-align:left;'
             'color:var(--text-muted);padding:20px">'
             "Keine Walk-Forward-Fenster verfügbar."
             "</p></div>"
@@ -861,7 +861,7 @@ def generate_html_report(summary_path: Path, output_dir: Path, strategy_name: st
         )
     else:
         html.append(
-            '<div class="card-body"><p style="text-align:center;color:var(--text-muted);padding:20px">'
+            '<div class="card-body"><p style="text-align:left;color:var(--text-muted);padding:20px">'
             "Keine Multi-Asset Optimizer-Daten gefunden oder XML konnte nicht geparst werden."
             "</p></div>"
         )
