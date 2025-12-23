@@ -1,5 +1,5 @@
 1.
-cd G:\DAVID\Desktop\GitHub\quant_validation_pipeline
+cd G:\DAVID\Desktop\GitHub\quant_validation_pipeline_mt5
 
 venv\Scripts\activate
 
